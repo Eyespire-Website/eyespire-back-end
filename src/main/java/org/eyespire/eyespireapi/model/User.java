@@ -4,7 +4,10 @@ import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import org.eyespire.eyespireapi.model.enums.GenderType;
+import org.eyespire.eyespireapi.model.enums.UserRole;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 @Data
@@ -30,11 +33,16 @@ public class User {
     @Column(length = 255)
     private String password;
     
-    @Column(length = 50)
-    private String role;
-    
+    @Enumerated(EnumType.STRING)
     @Column(length = 20)
-    private String gender;
+    private UserRole role;
+    
+    @Enumerated(EnumType.STRING)
+    @Column(length = 10)
+    private GenderType gender;
+    
+    @Column(name = "date_of_birth")
+    private LocalDate dateOfBirth;
     
     @Column(length = 20)
     private String phone;
@@ -42,11 +50,26 @@ public class User {
     @Column(name = "avatar_url", length = 255)
     private String avatarUrl;
     
+    @Column(length = 100)
+    private String province;
+    
+    @Column(length = 100)
+    private String district;
+    
+    @Column(length = 100)
+    private String ward;
+    
+    @Column(name = "address_detail")
+    private String addressDetail;
+    
     @Column(name = "created_at")
     private LocalDateTime createdAt;
     
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
+    
+    @Column(name = "is_google_account")
+    private Boolean isGoogleAccount = false;
     
     @PrePersist
     protected void onCreate() {
