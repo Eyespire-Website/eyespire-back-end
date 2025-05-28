@@ -1,6 +1,9 @@
 package org.eyespire.eyespireapi.controller;
 
-import org.eyespire.eyespireapi.dto.*;
+import org.eyespire.eyespireapi.dto.GoogleCallbackRequest;
+import org.eyespire.eyespireapi.dto.GoogleLoginUrlResponse;
+import org.eyespire.eyespireapi.dto.LoginRequest;
+import org.eyespire.eyespireapi.dto.LoginResponse;
 import org.eyespire.eyespireapi.service.AuthService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
@@ -25,26 +28,6 @@ public class AuthController {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
                     .body("Tên đăng nhập hoặc mật khẩu không đúng");
         }
-    }
-
-    @PostMapping("/signup")
-    public ResponseEntity<?> signupStep1(@RequestBody SignupRequest signupRequest) {
-        try {
-            authService.signupStep1SendOtp(signupRequest);
-            return ResponseEntity.ok("Đã gửi mã OTP tới email.");
-        } catch (IllegalArgumentException e) {
-            return ResponseEntity.badRequest().body(e.getMessage());
-        }
-    }
-
-    // Xác thực OTP
-    @PostMapping("/signup/verify-otp")
-    public ResponseEntity<?> signupVerifyOtp(@RequestBody VerifyOtpRequest verifyOtpRequest) {
-        LoginResponse response = authService.verifyOtpAndCreateUser(verifyOtpRequest.getEmail(), verifyOtpRequest.getOtp());
-        if(response == null) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("OTP không hợp lệ hoặc đã hết hạn.");
-        }
-        return ResponseEntity.ok(response);
     }
     
     @GetMapping("/google-login-url")
