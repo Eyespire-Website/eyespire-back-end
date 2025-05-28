@@ -5,7 +5,11 @@ import org.eyespire.eyespireapi.dto.LoginResponse;
 import org.eyespire.eyespireapi.dto.SignupRequest;
 import org.eyespire.eyespireapi.model.OtpCode;
 import org.eyespire.eyespireapi.model.User;
+
 import org.eyespire.eyespireapi.repository.OtpCodeRepository;
+
+import org.eyespire.eyespireapi.model.enums.UserRole;
+
 import org.eyespire.eyespireapi.repository.UserRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -88,8 +92,8 @@ public class AuthService {
                 user.getUsername(),
                 user.getName(),
                 user.getEmail(),
-                user.getRole(),
-                user.getGender(),
+                user.getRole().toString(),
+                user.getGender() != null ? user.getGender().toString() : null,
                 user.getPhone(),
                 user.getAvatarUrl()
             );
@@ -126,9 +130,10 @@ public class AuthService {
             
             User user;
             if (existingUser.isPresent()) {
-                // Người dùng đã tồn tại, cập nhật thông tin nếu cần
+                // Người dùng đã tồn tại, cập nhật thông tin từ Google
                 user = existingUser.get();
-                logger.info("Người dùng đã tồn tại trong hệ thống: " + email);
+                updateUserFromGoogleInfo(user, userInfo);
+                logger.info("Đã cập nhật thông tin người dùng từ Google: " + email);
             } else {
                 // Tạo người dùng mới
                 user = createUserFromGoogleInfo(userInfo);
@@ -141,8 +146,8 @@ public class AuthService {
                 user.getUsername(),
                 user.getName(),
                 user.getEmail(),
-                user.getRole(),
-                user.getGender(),
+                user.getRole().toString(),
+                user.getGender() != null ? user.getGender().toString() : null,
                 user.getPhone(),
                 user.getAvatarUrl()
             );
@@ -216,14 +221,18 @@ public class AuthService {
         newUser.setUsername(finalUsername);
         newUser.setName(name);
         newUser.setAvatarUrl(pictureUrl);
-        newUser.setRole("patient"); // Mặc định role là USER
+
+        newUser.setRole(UserRole.PATIENT); // Mặc định role là PATIENT
+
         
         // Tạo mật khẩu ngẫu nhiên (người dùng có thể đổi sau)
         String randomPassword = UUID.randomUUID().toString().substring(0, 8);
         newUser.setPassword(randomPassword);
+        newUser.setIsGoogleAccount(true); // Đánh dấu là tài khoản Google
         
         return userRepository.save(newUser);
     }
+
 
 
     // Step 1: Gửi OTP
@@ -306,5 +315,18 @@ public class AuthService {
                 user.getPhone(),
                 user.getAvatarUrl()
         );
+
+    
+    private User updateUserFromGoogleInfo(User user, Map<String, Object> userInfo) {
+        String name = (String) userInfo.get("name");
+        String pictureUrl = (String) userInfo.get("picture");
+        
+        // Cập nhật thông tin người dùng
+        user.setName(name);
+        user.setAvatarUrl(pictureUrl);
+        
+        // Lưu người dùng đã cập nhật
+        return userRepository.save(user);
+
     }
 }

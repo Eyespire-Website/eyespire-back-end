@@ -16,4 +16,17 @@ public class LoginResponse {
     private String gender;
     private String phone;
     private String avatarUrl;
+    private Boolean isGoogleAccount;
+    
+    public LoginResponse(Integer id, String username, String name, String email, String role, String gender, String phone, String avatarUrl) {
+        this.id = id;
+        this.username = username;
+        this.name = name;
+        this.email = email;
+        this.role = role;
+        this.gender = gender;
+        this.phone = phone;
+        this.avatarUrl = avatarUrl;
+        this.isGoogleAccount = false;
+    }
 }
