@@ -14,6 +14,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.LinkedMultiValueMap;
@@ -60,6 +61,9 @@ public class AuthService {
     @Autowired
     private EmailService emailService;
 
+    @Autowired
+    private PasswordEncoder passwordEncoder;
+
     public LoginResponse login(LoginRequest loginRequest) {
         logger.info("Đang xử lý đăng nhập cho username/email: " + loginRequest.getUsername());
         
@@ -77,7 +81,7 @@ public class AuthService {
         logger.info("Tìm thấy người dùng: " + user.getUsername() + ", đang kiểm tra mật khẩu");
         
         // Kiểm tra nếu user tồn tại và mật khẩu đúng
-        if (user.getPassword().equals(loginRequest.getPassword())) {
+        if (passwordEncoder.matches(loginRequest.getPassword(), user.getPassword()))  {
             logger.info("Đăng nhập thành công cho người dùng: " + user.getUsername());
             return new LoginResponse(
                 user.getId(),
@@ -244,7 +248,7 @@ public class AuthService {
         otpCode.setCode(otp);
         otpCode.setExpiryTime(LocalDateTime.now().plusMinutes(OTP_EXPIRE_MINUTES));
         otpCode.setName(signupRequest.getName());
-        otpCode.setPassword(signupRequest.getPassword()); // bạn nên hash mật khẩu trước khi lưu, ở đây tạm để vậy
+        otpCode.setPassword(passwordEncoder.encode(signupRequest.getPassword())); // bạn nên hash mật khẩu trước khi lưu, ở đây tạm để vậy
 
         otpCodeRepository.deleteByEmail(signupRequest.getEmail()); // xóa các otp cũ nếu có
         otpCodeRepository.save(otpCode);
@@ -285,7 +289,7 @@ public class AuthService {
         user.setEmail(email);
         user.setUsername(finalUsername);
         user.setName(otpCode.getName());
-        user.setPassword(otpCode.getPassword()); // Nếu chưa hash, bạn nên hash mật khẩu tại đây hoặc trước khi lưu
+        user.setPassword(otpCode.getPassword());
         user.setRole("PATIENT");
 
         user = userRepository.save(user);
