@@ -3,6 +3,8 @@ package org.eyespire.eyespireapi.dto;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import org.eyespire.eyespireapi.model.enums.GenderType;
+import org.eyespire.eyespireapi.model.enums.UserRole;
 
 @Data
 @AllArgsConstructor
@@ -29,4 +31,5 @@ public class LoginResponse {
         this.avatarUrl = avatarUrl;
         this.isGoogleAccount = false;
     }
+
 }
