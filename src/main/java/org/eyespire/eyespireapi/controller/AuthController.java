@@ -72,4 +72,34 @@ public class AuthController {
                     .body("Lỗi xử lý xác thực Google: " + e.getMessage());
         }
     }
+    
+    @PostMapping("/forgot-password")
+    public ResponseEntity<?> forgotPassword(@RequestBody ForgotPasswordRequest request) {
+        try {
+            authService.forgotPassword(request.getEmail());
+            return ResponseEntity.ok("Đã gửi email hướng dẫn đặt lại mật khẩu");
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(e.getMessage());
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("Lỗi khi xử lý yêu cầu đặt lại mật khẩu: " + e.getMessage());
+        }
+    }
+    
+    @PostMapping("/reset-password")
+    public ResponseEntity<?> resetPassword(@RequestBody ResetPasswordRequest request) {
+        try {
+            boolean success = authService.resetPassword(request.getEmail(), request.getOtp(), request.getNewPassword());
+            if (success) {
+                return ResponseEntity.ok("Đặt lại mật khẩu thành công");
+            } else {
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Không thể đặt lại mật khẩu");
+            }
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(e.getMessage());
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("Lỗi khi đặt lại mật khẩu: " + e.getMessage());
+        }
+    }
 }
