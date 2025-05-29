@@ -1,6 +1,7 @@
 package org.eyespire.eyespireapi.dto;
 
-import jakarta.validation.constraints.*;
+import jakarta.validation.constraints.Email;
+import jakarta.validation.constraints.NotBlank;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -8,16 +9,7 @@ import lombok.NoArgsConstructor;
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
-public class SignupRequest {
-    @NotBlank
-    private String username;
-
-    @NotBlank
-    private String name;
-
+public class ForgotPasswordRequest {
     @Email @NotBlank
     private String email;
-
-    @NotBlank
-    private String password;
 }

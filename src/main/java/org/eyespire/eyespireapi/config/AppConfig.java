@@ -34,8 +34,7 @@ public class AppConfig {
                 .csrf(csrf -> csrf.disable())
                 .httpBasic(httpBasic -> httpBasic.disable()) // Tắt CSRF nếu dùng JWT
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/api/auth/**").permitAll()// Cho phép endpoint /signup
-                        .anyRequest().authenticated()
+                        .anyRequest().permitAll() // Cho phép tất cả các request mà không cần xác thực
                 );
 
         return http.build();

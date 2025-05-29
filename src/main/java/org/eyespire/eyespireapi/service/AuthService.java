@@ -4,9 +4,11 @@ import org.eyespire.eyespireapi.dto.LoginRequest;
 import org.eyespire.eyespireapi.dto.LoginResponse;
 import org.eyespire.eyespireapi.dto.SignupRequest;
 import org.eyespire.eyespireapi.model.OtpCode;
+import org.eyespire.eyespireapi.model.PasswordReset;
 import org.eyespire.eyespireapi.model.User;
 import org.eyespire.eyespireapi.model.enums.UserRole;
 import org.eyespire.eyespireapi.repository.OtpCodeRepository;
+import org.eyespire.eyespireapi.repository.PasswordResetRepository;
 import org.eyespire.eyespireapi.repository.UserRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -21,7 +23,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestTemplate;
-
+import java.util.Random;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.logging.Logger;
@@ -34,7 +36,6 @@ public class AuthService {
     private static final String GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
     private static final String GOOGLE_USER_INFO_URL = "https://www.googleapis.com/oauth2/v3/userinfo";
     private static final int OTP_EXPIRE_MINUTES = 5;
-
 
     @Value("${google.client.id}")
     private String googleClientId;
@@ -60,6 +61,9 @@ public class AuthService {
     @Autowired
     private PasswordEncoder passwordEncoder;
 
+    @Autowired
+    private PasswordResetRepository passwordResetRepository;
+
     public LoginResponse login(LoginRequest loginRequest) {
         logger.info("Đang xử lý đăng nhập cho username/email: " + loginRequest.getUsername());
 
@@ -74,12 +78,10 @@ public class AuthService {
             return null;
         }
 
-        logger.info("Tìm thấy người dùng: " + user.getUsername() + ", đang kiểm tra mật khẩu");
-
-        // Kiểm tra nếu user tồn tại và mật khẩu đúng
+        // Kiểm tra mật khẩu
         if (passwordEncoder.matches(loginRequest.getPassword(), user.getPassword())) {
             logger.info("Đăng nhập thành công cho người dùng: " + user.getUsername());
-            return new LoginResponse(
+            LoginResponse response = new LoginResponse(
                     user.getId(),
                     user.getUsername(),
                     user.getName(),
@@ -89,6 +91,8 @@ public class AuthService {
                     user.getPhone(),
                     user.getAvatarUrl()
             );
+            response.setIsGoogleAccount(user.getIsGoogleAccount());
+            return response;
         } else {
             logger.warning("Mật khẩu không đúng cho người dùng: " + user.getUsername());
             return null;
@@ -133,7 +137,7 @@ public class AuthService {
             }
 
             // Trả về thông tin đăng nhập
-            return new LoginResponse(
+            LoginResponse response = new LoginResponse(
                     user.getId(),
                     user.getUsername(),
                     user.getName(),
@@ -143,6 +147,8 @@ public class AuthService {
                     user.getPhone(),
                     user.getAvatarUrl()
             );
+            response.setIsGoogleAccount(true);
+            return response;
 
         } catch (Exception e) {
             logger.severe("Lỗi xác thực Google: " + e.getMessage());
@@ -234,10 +240,12 @@ public class AuthService {
         // Lưu người dùng đã cập nhật
         return userRepository.save(user);
     }
+
     // Step 1: Gửi OTP
     @Transactional
     public void signupStep1SendOtp(SignupRequest signupRequest) {
         System.out.println("==> Dữ liệu nhận từ frontend:");
+        System.out.println("Username: " + signupRequest.getUsername());
         System.out.println("Name: " + signupRequest.getName());
         System.out.println("Email: " + signupRequest.getEmail());
         System.out.println("Password: " + signupRequest.getPassword());
@@ -248,6 +256,11 @@ public class AuthService {
             throw new IllegalArgumentException("Email đã được sử dụng");
         }
 
+        // Kiểm tra username đã có user chưa
+        if(userRepository.findByUsername(signupRequest.getUsername()).isPresent()) {
+            throw new IllegalArgumentException("Username đã được sử dụng");
+        }
+
         // Tạo mã OTP 6 số ngẫu nhiên
         String otp = String.format("%06d", new Random().nextInt(999999));
 
@@ -256,6 +269,7 @@ public class AuthService {
         otpCode.setEmail(signupRequest.getEmail());
         otpCode.setCode(otp);
         otpCode.setExpiryTime(LocalDateTime.now().plusMinutes(OTP_EXPIRE_MINUTES));
+        otpCode.setUsername(signupRequest.getUsername());
         otpCode.setName(signupRequest.getName());
         otpCode.setPassword(passwordEncoder.encode(signupRequest.getPassword()));  // bạn nên hash mật khẩu trước khi lưu, ở đây tạm để vậy
 
@@ -287,17 +301,9 @@ public class AuthService {
         }
 
         // Tạo user mới từ thông tin trong otpCode
-        String baseUsername = email.substring(0, email.indexOf('@'));
-        String finalUsername = baseUsername;
-        int counter = 1;
-        while (userRepository.findByUsername(finalUsername).isPresent()) {
-            finalUsername = baseUsername + counter;
-            counter++;
-        }
-
         User newUser = new User();
         newUser.setEmail(email);
-        newUser.setUsername(finalUsername);
+        newUser.setUsername(otpCode.getUsername());
         newUser.setName(otpCode.getName());
         newUser.setPassword(otpCode.getPassword()); // đã được mã hóa trước đó
         newUser.setRole(UserRole.PATIENT); // mặc định role là PATIENT
@@ -318,5 +324,74 @@ public class AuthService {
         response.setAvatarUrl(newUser.getAvatarUrl());
         response.setIsGoogleAccount(false);
         return response;
+    }
+
+    // Gửi email quên mật khẩu với OTP
+    @Transactional
+    public void forgotPassword(String email) {
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new IllegalArgumentException("Email không tồn tại trong hệ thống"));
+
+        // Kiểm tra xem đây có phải là tài khoản Google không
+        if (user.getIsGoogleAccount()) {
+            throw new IllegalArgumentException("Đây là tài khoản Google. Vui lòng sử dụng tính năng đăng nhập với Google.");
+        }
+        
+        // Xóa các OTP cũ nếu có
+        passwordResetRepository.deleteByUser(user);
+
+        // Tạo OTP mới (6 chữ số)
+        String otp = String.format("%06d", new Random().nextInt(1000000));
+        
+        // Lưu OTP vào database
+        PasswordReset passwordReset = new PasswordReset();
+        passwordReset.setUser(user);
+        passwordReset.setOtpCode(otp);
+        passwordReset.setExpiresAt(LocalDateTime.now().plusMinutes(5)); // OTP có hiệu lực trong 5 phút
+        
+        passwordResetRepository.save(passwordReset);
+        
+        // Gửi email chứa OTP
+        emailService.sendPasswordResetOtpEmail(user.getEmail(), otp);
+        
+        logger.info("Đã gửi email OTP đặt lại mật khẩu cho: " + email);
+    }
+    
+    // Đặt lại mật khẩu với OTP
+    @Transactional
+    public boolean resetPassword(String email, String otp, String newPassword) {
+        // Tìm user theo email
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new IllegalArgumentException("Email không tồn tại trong hệ thống"));
+        
+        // Kiểm tra xem đây có phải là tài khoản Google không
+        if (user.getIsGoogleAccount()) {
+            throw new IllegalArgumentException("Đây là tài khoản Google. Vui lòng sử dụng tính năng đăng nhập với Google.");
+        }
+        
+        // Tìm password reset theo user
+        PasswordReset passwordReset = passwordResetRepository.findByUserEmail(email)
+                .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy yêu cầu đặt lại mật khẩu cho email này"));
+        
+        // Kiểm tra OTP
+        if (!passwordReset.getOtpCode().equals(otp)) {
+            throw new IllegalArgumentException("Mã OTP không chính xác");
+        }
+        
+        // Kiểm tra OTP còn hiệu lực
+        if (passwordReset.getExpiresAt().isBefore(LocalDateTime.now())) {
+            passwordResetRepository.delete(passwordReset);
+            throw new IllegalArgumentException("Mã OTP đã hết hạn");
+        }
+        
+        // Cập nhật mật khẩu
+        user.setPassword(passwordEncoder.encode(newPassword));
+        userRepository.save(user);
+        
+        // Xóa OTP đã sử dụng
+        passwordResetRepository.delete(passwordReset);
+        
+        logger.info("Đã đặt lại mật khẩu thành công cho user: " + user.getUsername());
+        return true;
     }
 }

@@ -6,6 +6,7 @@ import org.eyespire.eyespireapi.model.enums.GenderType;
 import org.eyespire.eyespireapi.repository.UserRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -26,6 +27,9 @@ public class UserService {
     
     @Value("${app.upload.dir:${user.home}/eyespire/uploads}")
     private String uploadDir;
+    
+    @Autowired
+    private PasswordEncoder passwordEncoder;
 
     public User getUserById(Integer id) {
         Optional<User> userOptional = userRepository.findById(id);
@@ -99,9 +103,10 @@ public class UserService {
         if (userOptional.isPresent()) {
             User user = userOptional.get();
             
-            // Kiểm tra mật khẩu hiện tại
-            if (user.getPassword().equals(currentPassword)) {
-                user.setPassword(newPassword);
+            // Kiểm tra mật khẩu hiện tại bằng passwordEncoder
+            if (passwordEncoder.matches(currentPassword, user.getPassword())) {
+                // Mã hóa mật khẩu mới trước khi lưu
+                user.setPassword(passwordEncoder.encode(newPassword));
                 userRepository.save(user);
                 return true;
             } else {

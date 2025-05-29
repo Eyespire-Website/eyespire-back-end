@@ -16,6 +16,7 @@ public class OtpCode {
     private LocalDateTime expiryTime;
 
     // thêm các trường tạm để lưu signup info
+    private String username;
     private String name;
     private String password;
 
@@ -50,6 +51,14 @@ public class OtpCode {
 
     public void setExpiryTime(LocalDateTime expiryTime) {
         this.expiryTime = expiryTime;
+    }
+
+    public String getUsername() {
+        return username;
+    }
+
+    public void setUsername(String username) {
+        this.username = username;
     }
 
     public String getName() {
