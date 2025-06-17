@@ -7,12 +7,13 @@ import lombok.NoArgsConstructor;
 import org.eyespire.eyespireapi.model.enums.AvailabilityStatus;
 
 import java.time.LocalDate;
+import java.time.LocalTime;
 
+@Entity
+@Table(name = "doctor_availabilities")
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
-@Entity
-@Table(name = "doctor_availabilities")
 public class DoctorAvailability {
     
     @Id
@@ -20,16 +21,22 @@ public class DoctorAvailability {
     private Integer id;
     
     @ManyToOne
-    @JoinColumn(name = "doctor_id")
+    @JoinColumn(name = "doctor_id", nullable = false)
     private Doctor doctor;
     
-    @Column(name = "available_date")
-    private LocalDate availableDate;
+    @Column(nullable = false)
+    private LocalDate date;
     
-    @Column(name = "hour_slot")
-    private Integer hourSlot;
+    @Column(name = "start_time", nullable = false)
+    private LocalTime startTime;
+    
+    @Column(name = "end_time", nullable = false)
+    private LocalTime endTime;
     
     @Enumerated(EnumType.STRING)
-    @Column(length = 20)
-    private AvailabilityStatus status;
+    @Column(nullable = false)
+    private AvailabilityStatus status = AvailabilityStatus.AVAILABLE;
+    
+    @Column(columnDefinition = "TEXT")
+    private String notes;
 }
