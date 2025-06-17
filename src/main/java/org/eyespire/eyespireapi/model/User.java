@@ -21,16 +21,16 @@ public class User {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Integer id;
     
-    @Column(length = 255, unique = true)
+    @Column(length = 255, unique = true, columnDefinition = "nvarchar(255)")
     private String username;
     
-    @Column(length = 255)
+    @Column(length = 255, columnDefinition = "nvarchar(255)")
     private String name;
     
-    @Column(length = 255, unique = true)
+    @Column(length = 255, unique = true, columnDefinition = "nvarchar(255)")
     private String email;
     
-    @Column(length = 255)
+    @Column(length = 255, columnDefinition = "nvarchar(255)")
     private String password;
     
     @Enumerated(EnumType.STRING)
@@ -44,22 +44,22 @@ public class User {
     @Column(name = "date_of_birth")
     private LocalDate dateOfBirth;
     
-    @Column(length = 20)
+    @Column(length = 20, columnDefinition = "nvarchar(20)")
     private String phone;
     
-    @Column(name = "avatar_url", length = 255)
+    @Column(name = "avatar_url", length = 255, columnDefinition = "nvarchar(255)")
     private String avatarUrl;
     
-    @Column(length = 100)
+    @Column(length = 100, columnDefinition = "nvarchar(100)")
     private String province;
     
-    @Column(length = 100)
+    @Column(length = 100, columnDefinition = "nvarchar(100)")
     private String district;
     
-    @Column(length = 100)
+    @Column(length = 100, columnDefinition = "nvarchar(100)")
     private String ward;
     
-    @Column(name = "address_detail")
+    @Column(name = "address_detail", columnDefinition = "nvarchar(255)")
     private String addressDetail;
     
     @Column(name = "created_at")

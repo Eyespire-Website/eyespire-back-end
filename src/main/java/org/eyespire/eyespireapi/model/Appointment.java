@@ -6,8 +6,6 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.eyespire.eyespireapi.model.enums.AppointmentStatus;
 
-import java.math.BigDecimal;
-import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 @Data
@@ -26,37 +24,33 @@ public class Appointment {
     private User patient;
     
     @ManyToOne
-    @JoinColumn(name = "doctor_id")
+    @JoinColumn(name = "doctor_id", nullable = false)
     private Doctor doctor;
     
-    @OneToOne
-    @JoinColumn(name = "availability_id", unique = true)
-    private DoctorAvailability availability;
-    
     @ManyToOne
-    @JoinColumn(name = "service_id")
+    @JoinColumn(name = "service_id", nullable = false)
     private MedicalService service;
     
-    @Column(name = "appointment_date")
-    private LocalDate appointmentDate;
+    @Column(name = "appointment_time", nullable = false)
+    private LocalDateTime appointmentTime;
     
-    @Column(name = "hour_slot")
-    private Integer hourSlot;
+    @Column(name = "patient_name", nullable = false, columnDefinition = "nvarchar(255)")
+    private String patientName;
     
-    @Column(name = "booking_fee", precision = 10, scale = 2)
-    private BigDecimal bookingFee;
+    @Column(name = "patient_email", nullable = false, columnDefinition = "nvarchar(255)")
+    private String patientEmail;
     
-    @Column(name = "service_price", precision = 10, scale = 2)
-    private BigDecimal servicePrice;
+    @Column(name = "patient_phone", nullable = false, columnDefinition = "nvarchar(20)")
+    private String patientPhone;
     
-    @Enumerated(EnumType.STRING)
-    @Column(length = 20)
-    private AppointmentStatus status;
-    
-    @Column
+    @Column(columnDefinition = "nvarchar(max)")
     private String notes;
     
-    @Column(name = "created_at")
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    private AppointmentStatus status = AppointmentStatus.PENDING;
+    
+    @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
     
     @Column(name = "updated_at")

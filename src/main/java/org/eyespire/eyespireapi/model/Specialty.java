@@ -6,43 +6,30 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
 
 @Entity
-@Table(name = "medical_services")
+@Table(name = "specialties")
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
-public class MedicalService {
+public class Specialty {
     
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Integer id;
     
-    @Column(nullable = false, columnDefinition = "nvarchar(255)")
+    @Column(nullable = false, unique = true, columnDefinition = "nvarchar(255)")
     private String name;
     
     @Column(columnDefinition = "nvarchar(max)")
     private String description;
     
-    private BigDecimal price;
-    
     @Column(columnDefinition = "nvarchar(255)")
-    private String imageUrl;
+    private String iconUrl;
     
-    private Integer duration; // Thời gian dịch vụ (phút)
-    
-    @ManyToOne
-    @JoinColumn(name = "category_id")
-    private ServiceCategory category;
-    
-    @ManyToMany(mappedBy = "services")
+    @OneToMany(mappedBy = "specialty")
     @JsonIgnore
     private List<Doctor> doctors = new ArrayList<>();
-    
-    @OneToMany(mappedBy = "service")
-    @JsonIgnore
-    private List<Appointment> appointments = new ArrayList<>();
 }
