@@ -46,6 +46,9 @@ public class Appointment {
     @Column(columnDefinition = "nvarchar(max)")
     private String notes;
     
+    @Column(name = "payment_id")
+    private Integer paymentId;
+    
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private AppointmentStatus status = AppointmentStatus.PENDING;

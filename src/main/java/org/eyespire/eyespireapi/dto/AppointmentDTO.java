@@ -17,4 +17,5 @@ public class AppointmentDTO {
     private String patientEmail;    // Email của bệnh nhân
     private String patientPhone;    // Số điện thoại của bệnh nhân
     private String notes;           // Ghi chú bổ sung
+    private Integer paymentId;      // ID của thanh toán liên kết với lịch hẹn
 }
