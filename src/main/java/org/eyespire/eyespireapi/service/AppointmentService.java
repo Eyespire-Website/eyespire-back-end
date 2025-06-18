@@ -6,6 +6,7 @@ import org.eyespire.eyespireapi.model.Doctor;
 import org.eyespire.eyespireapi.model.MedicalService;
 import org.eyespire.eyespireapi.model.User;
 import org.eyespire.eyespireapi.model.enums.AppointmentStatus;
+import org.eyespire.eyespireapi.model.enums.GenderType;
 import org.eyespire.eyespireapi.repository.AppointmentRepository;
 import org.eyespire.eyespireapi.repository.DoctorRepository;
 import org.eyespire.eyespireapi.repository.MedicalServiceRepository;
@@ -154,5 +155,58 @@ public class AppointmentService {
         
         return appointmentRepository.findByDoctorIdAndAppointmentTimeBetweenOrderByAppointmentTimeAsc(
                 doctorId, startOfDay, endOfDay);
+    }
+    public Appointment updateAppointment(Integer id, AppointmentDTO appointmentDTO) {
+        Appointment appointment = appointmentRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy lịch hẹn"));
+
+        if (appointment.getStatus() != AppointmentStatus.PENDING) {
+            throw new IllegalStateException("Chỉ có thể cập nhật lịch hẹn ở trạng thái PENDING");
+        }
+
+        // Cập nhật các trường từ DTO
+        appointment.setService(medicalServiceRepository.findById(appointmentDTO.getServiceId())
+                .orElseThrow(() -> new IllegalArgumentException("Dịch vụ không tồn tại")));
+        appointment.setDoctor(doctorRepository.findById(appointmentDTO.getDoctorId())
+                .orElseThrow(() -> new IllegalArgumentException("Bác sĩ không tồn tại")));
+        appointment.setAppointmentTime(LocalDateTime.parse(
+                appointmentDTO.getAppointmentDate() + "T" + appointmentDTO.getTimeSlot()));
+        appointment.setStatus(AppointmentStatus.valueOf(appointmentDTO.getStatus()));
+        appointment.setNotes(appointmentDTO.getNotes());
+        appointment.setPatientName(appointmentDTO.getPatientName());
+        appointment.setPatientEmail(appointmentDTO.getPatientEmail());
+        appointment.setPatientPhone(appointmentDTO.getPatientPhone());
+
+        // Cập nhật thông tin bệnh nhân nếu có
+        if (appointmentDTO.getPatient() != null) {
+            User patient = userRepository.findById(appointmentDTO.getPatient().getId())
+                    .orElseGet(() -> {
+                        User newUser = new User();
+                        newUser.setId(appointmentDTO.getPatient().getId());
+                        return newUser;
+                    });
+            patient.setName(appointmentDTO.getPatient().getName());
+            patient.setEmail(appointmentDTO.getPatient().getEmail());
+            patient.setPhone(appointmentDTO.getPatient().getPhone());
+            patient.setProvince(appointmentDTO.getPatient().getProvince());
+            patient.setDistrict(appointmentDTO.getPatient().getDistrict());
+            patient.setWard(appointmentDTO.getPatient().getWard());
+            patient.setAddressDetail(appointmentDTO.getPatient().getAddressDetail());
+            patient.setAddressDetail(appointmentDTO.getPatient().getVillage());
+            if (appointmentDTO.getPatient().getGender() != null) {
+                patient.setGender(GenderType.valueOf(appointmentDTO.getPatient().getGender().toUpperCase()));
+            }
+            if (appointmentDTO.getPatient().getDateOfBirth() != null) {
+                patient.setDateOfBirth(LocalDate.parse(appointmentDTO.getPatient().getDateOfBirth()));
+            }
+            userRepository.save(patient);
+            appointment.setPatient(patient);
+        }
+
+        return appointmentRepository.save(appointment);
+    }
+
+    public List<Appointment> getAllAppointments() {
+        return appointmentRepository.findAll();
     }
 }
