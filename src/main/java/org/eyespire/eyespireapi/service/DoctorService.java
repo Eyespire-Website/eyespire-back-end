@@ -4,6 +4,7 @@ import org.eyespire.eyespireapi.dto.DoctorTimeSlotDTO;
 import org.eyespire.eyespireapi.model.Appointment;
 import org.eyespire.eyespireapi.model.Doctor;
 import org.eyespire.eyespireapi.model.DoctorAvailability;
+import org.eyespire.eyespireapi.model.enums.AppointmentStatus;
 import org.eyespire.eyespireapi.model.enums.AvailabilityStatus;
 import org.eyespire.eyespireapi.repository.AppointmentRepository;
 import org.eyespire.eyespireapi.repository.DoctorAvailabilityRepository;
@@ -59,26 +60,26 @@ public class DoctorService {
     public List<DoctorTimeSlotDTO> getAvailableTimeSlots(Integer doctorId, LocalDate date) {
         // Tạo danh sách khung giờ mặc định từ 8h đến 16h
         List<DoctorTimeSlotDTO> timeSlots = createDefaultTimeSlots();
-        
+
         // Mặc định tất cả các khung giờ là UNAVAILABLE
         for (DoctorTimeSlotDTO slot : timeSlots) {
             slot.setStatus(AvailabilityStatus.UNAVAILABLE);
         }
-        
+
         // Lấy danh sách khả năng của bác sĩ trong ngày từ database (nếu có)
         List<DoctorAvailability> availabilities = doctorAvailabilityRepository.findByDoctorIdAndDate(doctorId, date);
-        
+
         // Cập nhật trạng thái khung giờ dựa trên khả năng của bác sĩ
         for (DoctorAvailability availability : availabilities) {
             if (availability.getStatus() == AvailabilityStatus.AVAILABLE) {
                 LocalTime startTime = availability.getStartTime();
                 LocalTime endTime = availability.getEndTime();
-                
+
                 // Cập nhật tất cả các khung giờ nằm trong khoảng thời gian làm việc
                 for (DoctorTimeSlotDTO slot : timeSlots) {
                     LocalTime slotStartTime = slot.getStartTime();
                     LocalTime slotEndTime = slot.getEndTime();
-                    
+
                     // Nếu khung giờ nằm trong khoảng thời gian làm việc
                     if (!slotStartTime.isBefore(startTime) && !slotEndTime.isAfter(endTime)) {
                         slot.setStatus(AvailabilityStatus.AVAILABLE);
@@ -86,18 +87,19 @@ public class DoctorService {
                 }
             }
         }
-        
-        // Lấy danh sách lịch hẹn của bác sĩ trong ngày
-        List<Appointment> appointments = appointmentRepository.findByDoctorIdAndAppointmentTimeBetween(
-                doctorId, 
-                date.atStartOfDay(), 
-                date.atTime(23, 59, 59)
+
+        // *** FIXED: Chỉ lấy các lịch hẹn KHÔNG bị hủy ***
+        List<Appointment> appointments = appointmentRepository.findByDoctorIdAndAppointmentTimeBetweenAndStatusNot(
+                doctorId,
+                date.atStartOfDay(),
+                date.atTime(23, 59, 59),
+                AppointmentStatus.CANCELED  // Loại trừ các appointment đã hủy
         );
-        
-        // Cập nhật trạng thái khung giờ dựa trên lịch hẹn đã đặt
+
+        // Cập nhật trạng thái khung giờ dựa trên lịch hẹn đã đặt (không bao gồm đã hủy)
         for (Appointment appointment : appointments) {
             LocalTime appointmentTime = appointment.getAppointmentTime().toLocalTime();
-            
+
             // Tìm khung giờ tương ứng và đánh dấu là đã đặt
             for (DoctorTimeSlotDTO slot : timeSlots) {
                 if (slot.getStartTime().equals(appointmentTime)) {
@@ -106,28 +108,29 @@ public class DoctorService {
                 }
             }
         }
-        
+
         return timeSlots;
     }
-    
+
     /**
      * Tạo danh sách khung giờ mặc định từ 8h đến 16h
      */
     private List<DoctorTimeSlotDTO> createDefaultTimeSlots() {
         List<DoctorTimeSlotDTO> timeSlots = new ArrayList<>();
-        
+
         // Tạo các khung giờ từ 8h đến 16h, mỗi khung giờ cách nhau 1 tiếng
         for (int hour = 8; hour <= 16; hour++) {
             LocalTime startTime = LocalTime.of(hour, 0);
             LocalTime endTime = LocalTime.of(hour + 1, 0);
-            
+
             DoctorTimeSlotDTO slot = new DoctorTimeSlotDTO(startTime, endTime, AvailabilityStatus.AVAILABLE);
             timeSlots.add(slot);
         }
-        
+
         return timeSlots;
     }
-    
+
+
     /**
      * Kiểm tra bác sĩ có khả dụng trong khung giờ đặt lịch không
      */

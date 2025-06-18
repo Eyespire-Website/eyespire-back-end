@@ -1,6 +1,7 @@
 package org.eyespire.eyespireapi.controller;
 
 import org.eyespire.eyespireapi.dto.AppointmentDTO;
+import org.eyespire.eyespireapi.dto.UserDTO;
 import org.eyespire.eyespireapi.model.Appointment;
 import org.eyespire.eyespireapi.model.User;
 import org.eyespire.eyespireapi.model.enums.AppointmentStatus;
@@ -11,9 +12,11 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/appointments")
@@ -33,8 +36,7 @@ public class AppointmentController {
             Appointment appointment = appointmentService.createAppointment(appointmentDTO);
             return ResponseEntity.ok(appointment);
         } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                    .body("Không thể đặt lịch khám: " + e.getMessage());
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Không thể đặt lịch khám: " + e.getMessage());
         }
     }
 
@@ -46,12 +48,11 @@ public class AppointmentController {
             if (patient == null) {
                 return ResponseEntity.status(HttpStatus.NOT_FOUND).body("Không tìm thấy bệnh nhân");
             }
-            
+
             List<Appointment> appointments = appointmentService.getAppointmentsByPatient(patientId);
             return ResponseEntity.ok(appointments);
         } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body("Lỗi khi lấy danh sách lịch hẹn: " + e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Lỗi khi lấy danh sách lịch hẹn: " + e.getMessage());
         }
     }
 
@@ -62,8 +63,7 @@ public class AppointmentController {
             List<Appointment> appointments = appointmentService.getAppointmentsByDoctor(doctorId);
             return ResponseEntity.ok(appointments);
         } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body("Lỗi khi lấy danh sách lịch hẹn: " + e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Lỗi khi lấy danh sách lịch hẹn: " + e.getMessage());
         }
     }
 
@@ -77,8 +77,7 @@ public class AppointmentController {
             }
             return ResponseEntity.ok(appointmentOpt.get());
         } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body("Lỗi khi lấy thông tin lịch hẹn: " + e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Lỗi khi lấy thông tin lịch hẹn: " + e.getMessage());
         }
     }
 
@@ -90,51 +89,129 @@ public class AppointmentController {
             if (!appointmentOpt.isPresent()) {
                 return ResponseEntity.status(HttpStatus.NOT_FOUND).body("Không tìm thấy lịch hẹn");
             }
-            
+
             Appointment appointment = appointmentOpt.get();
             // Chỉ cho phép hủy lịch hẹn đang ở trạng thái PENDING hoặc CONFIRMED
-            if (appointment.getStatus() != AppointmentStatus.PENDING && 
-                appointment.getStatus() != AppointmentStatus.CONFIRMED) {
-                return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                        .body("Không thể hủy lịch hẹn ở trạng thái " + appointment.getStatus());
+            if (appointment.getStatus() != AppointmentStatus.PENDING && appointment.getStatus() != AppointmentStatus.CONFIRMED) {
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Không thể hủy lịch hẹn ở trạng thái " + appointment.getStatus());
             }
-            
+
             Appointment updatedAppointment = appointmentService.cancelAppointment(id);
             return ResponseEntity.ok(updatedAppointment);
         } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body("Lỗi khi hủy lịch hẹn: " + e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Lỗi khi hủy lịch hẹn: " + e.getMessage());
         }
     }
 
     // Cập nhật trạng thái lịch hẹn
     @PutMapping("/{id}/status")
-    public ResponseEntity<?> updateAppointmentStatus(
-            @PathVariable Integer id,
-            @RequestBody Map<String, String> statusUpdate) {
+    public ResponseEntity<?> updateAppointmentStatus(@PathVariable Integer id, @RequestBody Map<String, String> statusUpdate) {
         try {
             String statusStr = statusUpdate.get("status");
             if (statusStr == null) {
                 return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Thiếu thông tin trạng thái");
             }
-            
+
             AppointmentStatus status;
             try {
                 status = AppointmentStatus.valueOf(statusStr.toUpperCase());
             } catch (IllegalArgumentException e) {
                 return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Trạng thái không hợp lệ");
             }
-            
+
             Optional<Appointment> appointmentOpt = appointmentService.getAppointmentById(id);
             if (!appointmentOpt.isPresent()) {
                 return ResponseEntity.status(HttpStatus.NOT_FOUND).body("Không tìm thấy lịch hẹn");
             }
-            
+
             Appointment updatedAppointment = appointmentService.updateAppointmentStatus(id, status);
             return ResponseEntity.ok(updatedAppointment);
         } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body("Lỗi khi cập nhật trạng thái lịch hẹn: " + e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Lỗi khi cập nhật trạng thái lịch hẹn: " + e.getMessage());
         }
+    }
+
+    // Cập nhật thông tin lịch hẹn
+    @PutMapping("/{id}")
+    public ResponseEntity<?> updateAppointment(@PathVariable Integer id, @RequestBody AppointmentDTO appointmentDTO) {
+        try {
+            Optional<Appointment> appointmentOpt = appointmentService.getAppointmentById(id);
+
+            if (!appointmentOpt.isPresent()) {
+                return ResponseEntity.status(HttpStatus.NOT_FOUND).body("Không tìm thấy lịch hẹn");
+            }
+
+            Appointment appointment = appointmentOpt.get();
+
+            // Chỉ cho phép cập nhật nếu trạng thái là PENDING
+            if (appointment.getStatus() != AppointmentStatus.PENDING) {
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Chỉ có thể cập nhật lịch hẹn ở trạng thái PENDING");
+            }
+
+            Appointment updatedAppointment = appointmentService.updateAppointment(id, appointmentDTO);
+
+            return ResponseEntity.ok(updatedAppointment);
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Lỗi khi cập nhật lịch hẹn: " + e.getMessage());
+        }
+    }
+
+
+    @GetMapping
+    public ResponseEntity<?> getAllAppointments() {
+        try {
+            List<AppointmentDTO> appointments = appointmentService.getAllAppointments().stream().map(this::convertToDTO).collect(Collectors.toList());
+
+            if (appointments.isEmpty()) {
+                return ResponseEntity.status(HttpStatus.NO_CONTENT).body("Không có lịch hẹn nào được tìm thấy");
+            }
+
+            return ResponseEntity.ok(appointments);
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Lỗi khi lấy danh sách lịch hẹn: " + e.getMessage());
+        }
+    }
+
+    // Chuyển đổi từ Appointment sang AppointmentDTO
+    private AppointmentDTO convertToDTO(Appointment appointment) {
+        AppointmentDTO dto = new AppointmentDTO();
+
+        dto.setId(appointment.getId());
+        dto.setUserId(appointment.getPatient() != null ? appointment.getPatient().getId() : null);
+        dto.setDoctorId(appointment.getDoctor().getId());
+        dto.setServiceId(appointment.getService().getId());
+
+        // Định dạng ngày giờ cho front-end
+        DateTimeFormatter dateFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd");
+        DateTimeFormatter timeFormatter = DateTimeFormatter.ofPattern("HH:mm");
+
+        dto.setAppointmentDate(appointment.getAppointmentTime().format(dateFormatter));
+        dto.setTimeSlot(appointment.getAppointmentTime().format(timeFormatter));
+
+        dto.setPatientName(appointment.getPatientName());
+        dto.setPatientEmail(appointment.getPatientEmail());
+        dto.setPatientPhone(appointment.getPatientPhone());
+        dto.setNotes(appointment.getNotes());
+        dto.setStatus(appointment.getStatus().name());
+
+        // Nếu có thông tin bệnh nhân, chuyển đổi sang UserDTO
+        if (appointment.getPatient() != null) {
+            UserDTO patientDTO = new UserDTO();
+            patientDTO.setId(appointment.getPatient().getId());
+            patientDTO.setName(appointment.getPatient().getName());
+            patientDTO.setEmail(appointment.getPatient().getEmail());
+            patientDTO.setPhone(appointment.getPatient().getPhone());
+            patientDTO.setProvince(appointment.getPatient().getProvince());
+            patientDTO.setDistrict(appointment.getPatient().getDistrict());
+            patientDTO.setWard(appointment.getPatient().getWard());
+            patientDTO.setAddressDetail(appointment.getPatient().getAddressDetail());
+            patientDTO.setVillage(appointment.getPatient().getAddressDetail()); // dòng này có thể dư?
+            patientDTO.setGender(String.valueOf(appointment.getPatient().getGender()));
+            patientDTO.setDateOfBirth(String.valueOf(appointment.getPatient().getDateOfBirth()));
+
+            dto.setPatient(patientDTO);
+        }
+
+        return dto;
     }
 }
