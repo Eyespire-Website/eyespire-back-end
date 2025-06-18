@@ -22,12 +22,16 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
+import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestTemplate;
 import java.util.Random;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.logging.Logger;
 
+/**
+ * Service class for handling authentication-related tasks.
+ */
 @Service
 public class AuthService {
 
@@ -64,6 +68,12 @@ public class AuthService {
     @Autowired
     private PasswordResetRepository passwordResetRepository;
 
+    /**
+     * Handles login request.
+     *
+     * @param loginRequest Login request object containing username and password.
+     * @return Login response object containing user information if login is successful, null otherwise.
+     */
     public LoginResponse login(LoginRequest loginRequest) {
         logger.info("Đang xử lý đăng nhập cho username/email: " + loginRequest.getUsername());
 
@@ -99,6 +109,11 @@ public class AuthService {
         }
     }
 
+    /**
+     * Creates Google authorization URL.
+     *
+     * @return Google authorization URL.
+     */
     public String createGoogleAuthorizationUrl() {
         String state = UUID.randomUUID().toString();
 
@@ -110,10 +125,22 @@ public class AuthService {
                 "&state=" + state;
     }
 
+    /**
+     * Authenticates with Google using authorization code.
+     *
+     * @param code Authorization code from Google.
+     * @return Login response object containing user information if authentication is successful, null otherwise.
+     */
     public LoginResponse authenticateWithGoogle(String code) {
         try {
             // Bước 1: Đổi code lấy access token
             String accessToken = getGoogleAccessToken(code);
+
+            // Kiểm tra nếu không lấy được access token
+            if (accessToken == null) {
+                logger.severe("Không thể lấy access token từ Google");
+                return null;
+            }
 
             // Bước 2: Lấy thông tin người dùng từ Google
             Map<String, Object> userInfo = getGoogleUserInfo(accessToken);
@@ -157,29 +184,53 @@ public class AuthService {
         }
     }
 
+    /**
+     * Gets Google access token using authorization code.
+     *
+     * @param code Authorization code from Google.
+     * @return Google access token if successful, null otherwise.
+     */
     private String getGoogleAccessToken(String code) {
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
+        try {
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
 
-        MultiValueMap<String, String> map = new LinkedMultiValueMap<>();
-        map.add("code", code);
-        map.add("client_id", googleClientId);
-        map.add("client_secret", googleClientSecret);
-        map.add("redirect_uri", googleRedirectUri);
-        map.add("grant_type", "authorization_code");
+            MultiValueMap<String, String> map = new LinkedMultiValueMap<>();
+            map.add("code", code);
+            map.add("client_id", googleClientId);
+            map.add("client_secret", googleClientSecret);
+            map.add("redirect_uri", googleRedirectUri);
+            map.add("grant_type", "authorization_code");
 
-        HttpEntity<MultiValueMap<String, String>> request = new HttpEntity<>(map, headers);
+            HttpEntity<MultiValueMap<String, String>> request = new HttpEntity<>(map, headers);
 
-        ResponseEntity<Map> response = restTemplate.exchange(
-                GOOGLE_TOKEN_URL,
-                HttpMethod.POST,
-                request,
-                Map.class
-        );
+            try {
+                ResponseEntity<Map> response = restTemplate.exchange(
+                        GOOGLE_TOKEN_URL,
+                        HttpMethod.POST,
+                        request,
+                        Map.class
+                );
 
-        return (String) response.getBody().get("access_token");
+                return (String) response.getBody().get("access_token");
+            } catch (HttpClientErrorException e) {
+                logger.severe("Lỗi khi lấy access token từ Google: " + e.getMessage());
+                // Log chi tiết lỗi để debug
+                logger.severe("Response body: " + e.getResponseBodyAsString());
+                return null;
+            }
+        } catch (Exception e) {
+            logger.severe("Lỗi không xác định khi lấy access token: " + e.getMessage());
+            return null;
+        }
     }
 
+    /**
+     * Gets Google user information using access token.
+     *
+     * @param accessToken Google access token.
+     * @return Map containing user information.
+     */
     private Map<String, Object> getGoogleUserInfo(String accessToken) {
         HttpHeaders headers = new HttpHeaders();
         headers.setBearerAuth(accessToken);
@@ -197,6 +248,12 @@ public class AuthService {
         return response.getBody();
     }
 
+    /**
+     * Creates a new user from Google user information.
+     *
+     * @param userInfo Map containing user information.
+     * @return Newly created user.
+     */
     private User createUserFromGoogleInfo(Map<String, Object> userInfo) {
         String email = (String) userInfo.get("email");
         String name = (String) userInfo.get("name");
@@ -229,6 +286,13 @@ public class AuthService {
         return userRepository.save(newUser);
     }
 
+    /**
+     * Updates user information from Google user information.
+     *
+     * @param user    User to update.
+     * @param userInfo Map containing user information.
+     * @return Updated user.
+     */
     private User updateUserFromGoogleInfo(User user, Map<String, Object> userInfo) {
         String name = (String) userInfo.get("name");
         String pictureUrl = (String) userInfo.get("picture");
@@ -241,7 +305,11 @@ public class AuthService {
         return userRepository.save(user);
     }
 
-    // Step 1: Gửi OTP
+    /**
+     * Sends OTP for signup.
+     *
+     * @param signupRequest Signup request object containing user information.
+     */
     @Transactional
     public void signupStep1SendOtp(SignupRequest signupRequest) {
         System.out.println("==> Dữ liệu nhận từ frontend:");
@@ -252,12 +320,12 @@ public class AuthService {
         logger.info("Bắt đầu signup - gửi OTP cho email: " + signupRequest.getEmail());
 
         // Kiểm tra email đã có user chưa
-        if(userRepository.findByEmail(signupRequest.getEmail()).isPresent()) {
+        if (userRepository.findByEmail(signupRequest.getEmail()).isPresent()) {
             throw new IllegalArgumentException("Email đã được sử dụng");
         }
 
         // Kiểm tra username đã có user chưa
-        if(userRepository.findByUsername(signupRequest.getUsername()).isPresent()) {
+        if (userRepository.findByUsername(signupRequest.getUsername()).isPresent()) {
             throw new IllegalArgumentException("Username đã được sử dụng");
         }
 
@@ -282,19 +350,25 @@ public class AuthService {
         logger.info("Đã gửi OTP cho email: " + signupRequest.getEmail());
     }
 
-    // Step 2: Xác thực OTP & tạo user
+    /**
+     * Verifies OTP and creates user.
+     *
+     * @param email Email of the user.
+     * @param otp   OTP code.
+     * @return Login response object containing user information if successful, null otherwise.
+     */
     @Transactional
     public LoginResponse verifyOtpAndCreateUser(String email, String otp) {
         Optional<OtpCode> otpCodeOpt = otpCodeRepository.findByEmailAndCode(email, otp);
 
-        if(otpCodeOpt.isEmpty()) {
+        if (otpCodeOpt.isEmpty()) {
             logger.warning("OTP không đúng hoặc không tồn tại");
             return null;
         }
 
         OtpCode otpCode = otpCodeOpt.get();
 
-        if(otpCode.getExpiryTime().isBefore(LocalDateTime.now())) {
+        if (otpCode.getExpiryTime().isBefore(LocalDateTime.now())) {
             logger.warning("OTP đã hết hạn");
             otpCodeRepository.deleteByEmail(email);
             return null;
@@ -326,7 +400,11 @@ public class AuthService {
         return response;
     }
 
-    // Gửi email quên mật khẩu với OTP
+    /**
+     * Sends password reset OTP.
+     *
+     * @param email Email of the user.
+     */
     @Transactional
     public void forgotPassword(String email) {
         User user = userRepository.findByEmail(email)
@@ -336,61 +414,68 @@ public class AuthService {
         if (user.getIsGoogleAccount()) {
             throw new IllegalArgumentException("Đây là tài khoản Google. Vui lòng sử dụng tính năng đăng nhập với Google.");
         }
-        
+
         // Xóa các OTP cũ nếu có
         passwordResetRepository.deleteByUser(user);
 
         // Tạo OTP mới (6 chữ số)
         String otp = String.format("%06d", new Random().nextInt(1000000));
-        
+
         // Lưu OTP vào database
         PasswordReset passwordReset = new PasswordReset();
         passwordReset.setUser(user);
         passwordReset.setOtpCode(otp);
         passwordReset.setExpiresAt(LocalDateTime.now().plusMinutes(5)); // OTP có hiệu lực trong 5 phút
-        
+
         passwordResetRepository.save(passwordReset);
-        
+
         // Gửi email chứa OTP
         emailService.sendPasswordResetOtpEmail(user.getEmail(), otp);
-        
+
         logger.info("Đã gửi email OTP đặt lại mật khẩu cho: " + email);
     }
-    
-    // Đặt lại mật khẩu với OTP
+
+    /**
+     * Resets password using OTP.
+     *
+     * @param email    Email of the user.
+     * @param otp      OTP code.
+     * @param newPassword New password.
+     * @return True if successful, false otherwise.
+     */
     @Transactional
     public boolean resetPassword(String email, String otp, String newPassword) {
         // Tìm user theo email
         User user = userRepository.findByEmail(email)
                 .orElseThrow(() -> new IllegalArgumentException("Email không tồn tại trong hệ thống"));
-        
+
         // Kiểm tra xem đây có phải là tài khoản Google không
         if (user.getIsGoogleAccount()) {
             throw new IllegalArgumentException("Đây là tài khoản Google. Vui lòng sử dụng tính năng đăng nhập với Google.");
         }
-        
+
         // Tìm password reset theo user
         PasswordReset passwordReset = passwordResetRepository.findByUserEmail(email)
                 .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy yêu cầu đặt lại mật khẩu cho email này"));
-        
+
         // Kiểm tra OTP
         if (!passwordReset.getOtpCode().equals(otp)) {
             throw new IllegalArgumentException("Mã OTP không chính xác");
         }
-        
+
         // Kiểm tra OTP còn hiệu lực
         if (passwordReset.getExpiresAt().isBefore(LocalDateTime.now())) {
             passwordResetRepository.delete(passwordReset);
             throw new IllegalArgumentException("Mã OTP đã hết hạn");
         }
-        
+
         // Cập nhật mật khẩu
         user.setPassword(passwordEncoder.encode(newPassword));
         userRepository.save(user);
-        
+
         // Xóa OTP đã sử dụng
         passwordResetRepository.delete(passwordReset);
-        
+
         logger.info("Đã đặt lại mật khẩu thành công cho user: " + user.getUsername());
         return true;
     }

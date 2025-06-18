@@ -42,6 +42,16 @@ public class AppointmentService {
      * Tạo lịch hẹn mới
      */
     public Appointment createAppointment(AppointmentDTO appointmentDTO) {
+        // Kiểm tra xem đã có cuộc hẹn nào được tạo với paymentId này chưa
+        if (appointmentDTO.getPaymentId() != null) {
+            List<Appointment> existingAppointments = appointmentRepository.findByPaymentId(appointmentDTO.getPaymentId());
+            if (!existingAppointments.isEmpty()) {
+                // Nếu đã có cuộc hẹn với paymentId này, trả về cuộc hẹn đó thay vì tạo mới
+                System.out.println("Đã tìm thấy cuộc hẹn hiện có với paymentId: " + appointmentDTO.getPaymentId());
+                return existingAppointments.get(0);
+            }
+        }
+        
         // Tìm bác sĩ
         Doctor doctor = doctorRepository.findById(appointmentDTO.getDoctorId())
                 .orElseThrow(() -> new RuntimeException("Không tìm thấy bác sĩ"));
@@ -75,6 +85,11 @@ public class AppointmentService {
         if (appointmentDTO.getUserId() != null) {
             Optional<User> user = userRepository.findById(appointmentDTO.getUserId());
             user.ifPresent(appointment::setPatient);
+        }
+        
+        // Lưu paymentId nếu có
+        if (appointmentDTO.getPaymentId() != null) {
+            appointment.setPaymentId(appointmentDTO.getPaymentId());
         }
         
         // Lưu lịch hẹn vào database

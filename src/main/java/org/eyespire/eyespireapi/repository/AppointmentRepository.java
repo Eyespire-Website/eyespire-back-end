@@ -49,4 +49,7 @@ public interface AppointmentRepository extends JpaRepository<Appointment, Intege
     List<Appointment> findByDoctorIdAndAppointmentTimeBetweenOrderByAppointmentTimeAsc(Integer doctorId, LocalDateTime startOfDay, LocalDateTime endOfDay);
 
     List<Appointment> findByAppointmentTimeBetweenOrderByAppointmentTimeAsc(LocalDateTime startOfDay, LocalDateTime endOfDay);
+    
+    // Tìm lịch hẹn theo ID thanh toán
+    List<Appointment> findByPaymentId(Integer paymentId);
 }
