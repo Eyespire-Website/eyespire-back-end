@@ -1,6 +1,7 @@
 package org.eyespire.eyespireapi.controller;
 
 import org.eyespire.eyespireapi.dto.AppointmentDTO;
+import org.eyespire.eyespireapi.dto.DoctorTimeSlotDTO;
 import org.eyespire.eyespireapi.dto.UserDTO;
 import org.eyespire.eyespireapi.model.Appointment;
 import org.eyespire.eyespireapi.model.User;
@@ -8,11 +9,13 @@ import org.eyespire.eyespireapi.model.enums.AppointmentStatus;
 import org.eyespire.eyespireapi.service.AppointmentService;
 import org.eyespire.eyespireapi.service.UserService;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.format.DateTimeFormatter;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -156,6 +159,17 @@ public class AppointmentController {
         }
     }
 
+    @GetMapping("/available-by-date")
+    public ResponseEntity<?> getAvailableTimeSlotsByDate(
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
+        try {
+            List<DoctorTimeSlotDTO> availableSlots = appointmentService.getAvailableTimeSlotsByDate(date);
+            return ResponseEntity.ok(availableSlots);
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("Lỗi khi lấy khung giờ trống theo ngày: " + e.getMessage());
+        }
+    }
 
     @GetMapping
     public ResponseEntity<?> getAllAppointments() {
@@ -213,5 +227,26 @@ public class AppointmentController {
         }
 
         return dto;
+    }
+}
+
+@RestController
+@RequestMapping("/api")
+@CrossOrigin(origins = "*")
+class AvailableSlotsController {
+    
+    @Autowired
+    private AppointmentService appointmentService;
+    
+    @GetMapping("/available-slots")
+    public ResponseEntity<?> getAvailableSlotsForDate(
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
+        try {
+            List<DoctorTimeSlotDTO> availableSlots = appointmentService.getAvailableTimeSlotsByDate(date);
+            return ResponseEntity.ok(availableSlots);
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("Lỗi khi lấy khung giờ trống theo ngày: " + e.getMessage());
+        }
     }
 }
