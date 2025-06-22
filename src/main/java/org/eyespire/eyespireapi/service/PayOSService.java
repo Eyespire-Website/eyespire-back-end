@@ -422,17 +422,11 @@ public class PayOSService {
                         // Đặt paymentId trước
                         appointmentData.setPaymentId(payment.getId());
                         
-                        // Kiểm tra và đảm bảo doctorId không null
-                        if (payment.getDoctorId() == null) {
-                            throw new RuntimeException("Thiếu thông tin bác sĩ");
-                        }
+                        // Đặt doctorId nếu có (không bắt buộc)
                         appointmentData.setDoctorId(payment.getDoctorId());
                         System.out.println("doctorId: " + appointmentData.getDoctorId());
                         
-                        // Kiểm tra và đảm bảo serviceId không null
-                        if (payment.getServiceId() == null) {
-                            throw new RuntimeException("Thiếu thông tin dịch vụ");
-                        }
+                        // Đặt serviceId nếu có (không bắt buộc)
                         appointmentData.setServiceId(payment.getServiceId());
                         System.out.println("serviceId: " + appointmentData.getServiceId());
                         

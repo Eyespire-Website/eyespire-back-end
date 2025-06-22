@@ -133,20 +133,35 @@ public class AuthService {
      */
     public LoginResponse authenticateWithGoogle(String code) {
         try {
+            logger.info("Bắt đầu xác thực Google với code: " + code.substring(0, 10) + "...");
+            
             // Bước 1: Đổi code lấy access token
             String accessToken = getGoogleAccessToken(code);
 
             // Kiểm tra nếu không lấy được access token
             if (accessToken == null) {
-                logger.severe("Không thể lấy access token từ Google");
+                logger.severe("Không thể lấy access token từ Google - Xác thực thất bại");
+                return null;
+            }
+            
+            logger.info("Đã lấy được access token từ Google thành công");
+
+            // Bước 2: Lấy thông tin người dùng từ Google
+            Map<String, Object> userInfo;
+            try {
+                userInfo = getGoogleUserInfo(accessToken);
+                logger.info("Đã lấy được thông tin người dùng từ Google: " + userInfo.get("email"));
+            } catch (Exception e) {
+                logger.severe("Lỗi khi lấy thông tin người dùng từ Google: " + e.getMessage());
                 return null;
             }
 
-            // Bước 2: Lấy thông tin người dùng từ Google
-            Map<String, Object> userInfo = getGoogleUserInfo(accessToken);
-
             // Bước 3: Xử lý thông tin người dùng
             String email = (String) userInfo.get("email");
+            if (email == null || email.isEmpty()) {
+                logger.severe("Không nhận được email từ Google");
+                return null;
+            }
 
             // Kiểm tra xem email đã tồn tại trong hệ thống chưa
             Optional<User> existingUser = userRepository.findByEmail(email);
@@ -175,10 +190,11 @@ public class AuthService {
                     user.getAvatarUrl()
             );
             response.setIsGoogleAccount(true);
+            logger.info("Xác thực Google thành công cho email: " + email);
             return response;
 
         } catch (Exception e) {
-            logger.severe("Lỗi xác thực Google: " + e.getMessage());
+            logger.severe("Lỗi xác thực Google: " + e.getClass().getName() + ": " + e.getMessage());
             e.printStackTrace();
             return null;
         }
