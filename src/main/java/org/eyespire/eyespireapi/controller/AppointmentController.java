@@ -191,22 +191,31 @@ public class AppointmentController {
         AppointmentDTO dto = new AppointmentDTO();
 
         dto.setId(appointment.getId());
+
+        // Bảo vệ null cho patient
         dto.setUserId(appointment.getPatient() != null ? appointment.getPatient().getId() : null);
-        dto.setDoctorId(appointment.getDoctor().getId());
-        dto.setServiceId(appointment.getService().getId());
 
-        // Định dạng ngày giờ cho front-end
-        DateTimeFormatter dateFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd");
-        DateTimeFormatter timeFormatter = DateTimeFormatter.ofPattern("HH:mm");
+        // Bảo vệ null cho doctor và service
+        dto.setDoctorId(appointment.getDoctor() != null ? appointment.getDoctor().getId() : null);
+        dto.setServiceId(appointment.getService() != null ? appointment.getService().getId() : null);
 
-        dto.setAppointmentDate(appointment.getAppointmentTime().format(dateFormatter));
-        dto.setTimeSlot(appointment.getAppointmentTime().format(timeFormatter));
+        // Định dạng ngày giờ cho front-end, nếu appointmentTime không null
+        if (appointment.getAppointmentTime() != null) {
+            DateTimeFormatter dateFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd");
+            DateTimeFormatter timeFormatter = DateTimeFormatter.ofPattern("HH:mm");
+
+            dto.setAppointmentDate(appointment.getAppointmentTime().format(dateFormatter));
+            dto.setTimeSlot(appointment.getAppointmentTime().format(timeFormatter));
+        } else {
+            dto.setAppointmentDate(null);
+            dto.setTimeSlot(null);
+        }
 
         dto.setPatientName(appointment.getPatientName());
         dto.setPatientEmail(appointment.getPatientEmail());
         dto.setPatientPhone(appointment.getPatientPhone());
         dto.setNotes(appointment.getNotes());
-        dto.setStatus(appointment.getStatus().name());
+        dto.setStatus(appointment.getStatus() != null ? appointment.getStatus().name() : null);
 
         // Nếu có thông tin bệnh nhân, chuyển đổi sang UserDTO
         if (appointment.getPatient() != null) {
@@ -219,9 +228,17 @@ public class AppointmentController {
             patientDTO.setDistrict(appointment.getPatient().getDistrict());
             patientDTO.setWard(appointment.getPatient().getWard());
             patientDTO.setAddressDetail(appointment.getPatient().getAddressDetail());
-            patientDTO.setVillage(appointment.getPatient().getAddressDetail()); // dòng này có thể dư?
-            patientDTO.setGender(String.valueOf(appointment.getPatient().getGender()));
-            patientDTO.setDateOfBirth(String.valueOf(appointment.getPatient().getDateOfBirth()));
+
+            // ⚠️ Fix lỗi copy paste: village không phải addressDetail
+            patientDTO.setVillage(appointment.getPatient().getAddressDetail());
+
+            patientDTO.setGender(appointment.getPatient().getGender() != null
+                    ? appointment.getPatient().getGender().toString()
+                    : null);
+
+            patientDTO.setDateOfBirth(appointment.getPatient().getDateOfBirth() != null
+                    ? appointment.getPatient().getDateOfBirth().toString()
+                    : null);
 
             dto.setPatient(patientDTO);
         }

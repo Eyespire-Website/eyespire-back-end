@@ -3,6 +3,7 @@ package org.eyespire.eyespireapi.service;
 import org.eyespire.eyespireapi.dto.UpdateProfileRequest;
 import org.eyespire.eyespireapi.model.User;
 import org.eyespire.eyespireapi.model.enums.GenderType;
+import org.eyespire.eyespireapi.model.enums.UserRole;
 import org.eyespire.eyespireapi.repository.UserRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -16,6 +17,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.LocalDate;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -158,5 +160,9 @@ public class UserService {
             return "";
         }
         return fileName.substring(lastIndexOf);
+    }
+
+    public List<User> getAllPatients() {
+        return userRepository.findByRoleOrderByNameAsc(UserRole.PATIENT);
     }
 }

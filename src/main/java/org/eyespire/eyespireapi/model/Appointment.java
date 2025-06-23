@@ -24,11 +24,11 @@ public class Appointment {
     private User patient;
     
     @ManyToOne
-    @JoinColumn(name = "doctor_id", nullable = false)
+    @JoinColumn(name = "doctor_id", nullable = true)
     private Doctor doctor;
     
     @ManyToOne
-    @JoinColumn(name = "service_id", nullable = false)
+    @JoinColumn(name = "service_id", nullable = true)
     private MedicalService service;
     
     @Column(name = "appointment_time", nullable = false)
