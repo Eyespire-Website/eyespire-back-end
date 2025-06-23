@@ -1,9 +1,11 @@
 package org.eyespire.eyespireapi.service;
 
 import org.eyespire.eyespireapi.dto.UpdateProfileRequest;
+import org.eyespire.eyespireapi.model.Doctor;
 import org.eyespire.eyespireapi.model.User;
 import org.eyespire.eyespireapi.model.enums.GenderType;
 import org.eyespire.eyespireapi.model.enums.UserRole;
+import org.eyespire.eyespireapi.repository.DoctorRepository;
 import org.eyespire.eyespireapi.repository.UserRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -32,6 +34,9 @@ public class UserService {
     
     @Autowired
     private PasswordEncoder passwordEncoder;
+
+    @Autowired
+    private DoctorRepository doctorRepository;
 
     public User getUserById(Integer id) {
         Optional<User> userOptional = userRepository.findById(id);
@@ -110,6 +115,22 @@ public class UserService {
     
     // Phương thức mới để xóa người dùng (nhân viên)
     public void deleteUser(Integer id) {
+        // Kiểm tra xem user có phải là bác sĩ không
+        Optional<User> userOptional = userRepository.findById(id);
+        if (userOptional.isPresent()) {
+            User user = userOptional.get();
+            
+            // Nếu là bác sĩ, cần xóa thông tin bác sĩ trước
+            if (user.getRole() == UserRole.DOCTOR) {
+                Optional<Doctor> doctorOptional = doctorRepository.findByUserId(id);
+                if (doctorOptional.isPresent()) {
+                    // Xóa bác sĩ trước
+                    doctorRepository.delete(doctorOptional.get());
+                }
+            }
+        }
+        
+        // Sau đó mới xóa user
         userRepository.deleteById(id);
     }
 

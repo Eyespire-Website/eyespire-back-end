@@ -5,6 +5,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
+import java.util.Optional;
 
 @Repository
 public interface DoctorRepository extends JpaRepository<Doctor, Integer> {
@@ -17,4 +18,7 @@ public interface DoctorRepository extends JpaRepository<Doctor, Integer> {
     
     // Tìm bác sĩ theo chuyên khoa và tên chứa từ khóa
     List<Doctor> findBySpecialtyIdAndNameContainingIgnoreCase(Integer specialtyId, String keyword);
+    
+    // Tìm bác sĩ theo userId
+    Optional<Doctor> findByUserId(Integer userId);
 }
