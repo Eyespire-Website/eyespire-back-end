@@ -38,6 +38,15 @@ public class Doctor {
     @Column(columnDefinition = "nvarchar(max)")
     private String description;
     
+    // Thêm trường userId để liên kết với User
+    @Column(name = "user_id", unique = true)
+    private Integer userId;
+    
+    // Thêm quan hệ OneToOne với User
+    @OneToOne
+    @JoinColumn(name = "user_id", referencedColumnName = "id", insertable = false, updatable = false)
+    private User user;
+    
     @ManyToOne
     @JoinColumn(name = "specialty_id")
     private Specialty specialty;

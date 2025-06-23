@@ -1,14 +1,20 @@
 package org.eyespire.eyespireapi.service;
 
+import org.eyespire.eyespireapi.dto.DoctorDTO;
 import org.eyespire.eyespireapi.dto.DoctorTimeSlotDTO;
 import org.eyespire.eyespireapi.model.Appointment;
 import org.eyespire.eyespireapi.model.Doctor;
 import org.eyespire.eyespireapi.model.DoctorAvailability;
+import org.eyespire.eyespireapi.model.Specialty;
+import org.eyespire.eyespireapi.model.User;
 import org.eyespire.eyespireapi.model.enums.AppointmentStatus;
 import org.eyespire.eyespireapi.model.enums.AvailabilityStatus;
+import org.eyespire.eyespireapi.model.enums.UserRole;
 import org.eyespire.eyespireapi.repository.AppointmentRepository;
 import org.eyespire.eyespireapi.repository.DoctorAvailabilityRepository;
 import org.eyespire.eyespireapi.repository.DoctorRepository;
+import org.eyespire.eyespireapi.repository.SpecialtyRepository;
+import org.eyespire.eyespireapi.repository.UserRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
@@ -33,6 +39,12 @@ public class DoctorService {
     @Autowired
     private AppointmentRepository appointmentRepository;
     
+    @Autowired
+    private UserRepository userRepository;
+    
+    @Autowired
+    private SpecialtyRepository specialtyRepository;
+    
     /**
      * Lấy danh sách tất cả bác sĩ
      */
@@ -48,12 +60,117 @@ public class DoctorService {
     }
     
     /**
+     * Lấy thông tin bác sĩ theo User ID
+     */
+    public Optional<Doctor> getDoctorByUserId(Integer userId) {
+        return doctorRepository.findByUserId(userId);
+    }
+    
+    /**
      * Lấy danh sách bác sĩ theo chuyên khoa
      */
     public List<Doctor> getDoctorsBySpecialty(Integer specialtyId) {
         return doctorRepository.findBySpecialtyId(specialtyId);
     }
     
+    /**
+     * Tạo mới thông tin bác sĩ liên kết với User
+     */
+    public Doctor createDoctor(DoctorDTO doctorDTO) {
+        // Kiểm tra User có tồn tại không
+        Optional<User> userOpt = userRepository.findById(doctorDTO.getUserId());
+        if (userOpt.isEmpty()) {
+            throw new IllegalArgumentException("User không tồn tại");
+        }
+        
+        User user = userOpt.get();
+        
+        // Kiểm tra User có phải là bác sĩ không
+        if (user.getRole() != UserRole.DOCTOR) {
+            throw new IllegalArgumentException("User không phải là bác sĩ");
+        }
+        
+        // Kiểm tra Doctor đã tồn tại với userId này chưa
+        Optional<Doctor> existingDoctor = doctorRepository.findByUserId(doctorDTO.getUserId());
+        if (existingDoctor.isPresent()) {
+            throw new IllegalArgumentException("Bác sĩ đã tồn tại với User ID này");
+        }
+        
+        // Tạo mới Doctor
+        Doctor doctor = new Doctor();
+        doctor.setName(doctorDTO.getName() != null ? doctorDTO.getName() : user.getName());
+        doctor.setQualification(doctorDTO.getQualification());
+        doctor.setExperience(doctorDTO.getExperience());
+        doctor.setImageUrl(doctorDTO.getImageUrl());
+        doctor.setDescription(doctorDTO.getDescription());
+        doctor.setUserId(doctorDTO.getUserId());
+        
+        // Thiết lập Specialty nếu có
+        if (doctorDTO.getSpecialtyId() != null) {
+            Optional<Specialty> specialtyOpt = specialtyRepository.findById(doctorDTO.getSpecialtyId());
+            if (specialtyOpt.isPresent()) {
+                Specialty specialty = specialtyOpt.get();
+                doctor.setSpecialty(specialty);
+                // Tự động cập nhật trường specialization từ tên của specialty
+                doctor.setSpecialization(specialty.getName());
+            }
+        } else if (doctorDTO.getSpecialization() != null) {
+            // Nếu không có specialtyId nhưng có specialization
+            doctor.setSpecialization(doctorDTO.getSpecialization());
+        }
+        
+        return doctorRepository.save(doctor);
+    }
+    
+    /**
+     * Cập nhật thông tin bác sĩ
+     */
+   public Doctor updateDoctor(Integer id, DoctorDTO doctorDTO) {
+        // Kiểm tra Doctor có tồn tại không
+        Optional<Doctor> doctorOpt = doctorRepository.findById(id);
+        if (doctorOpt.isEmpty()) {
+            throw new IllegalArgumentException("Bác sĩ không tồn tại");
+        }
+        
+        Doctor doctor = doctorOpt.get();
+        
+        // Cập nhật thông tin
+        if (doctorDTO.getName() != null) {
+            doctor.setName(doctorDTO.getName());
+        }
+        
+        if (doctorDTO.getQualification() != null) {
+            doctor.setQualification(doctorDTO.getQualification());
+        }
+        
+        if (doctorDTO.getExperience() != null) {
+            doctor.setExperience(doctorDTO.getExperience());
+        }
+        
+        if (doctorDTO.getImageUrl() != null) {
+            doctor.setImageUrl(doctorDTO.getImageUrl());
+        }
+        
+        if (doctorDTO.getDescription() != null) {
+            doctor.setDescription(doctorDTO.getDescription());
+        }
+        
+        // Cập nhật Specialty nếu có
+        if (doctorDTO.getSpecialtyId() != null) {
+            Optional<Specialty> specialtyOpt = specialtyRepository.findById(doctorDTO.getSpecialtyId());
+            if (specialtyOpt.isPresent()) {
+                Specialty specialty = specialtyOpt.get();
+                doctor.setSpecialty(specialty);
+                // Tự động cập nhật trường specialization từ tên của specialty
+                doctor.setSpecialization(specialty.getName());
+            }
+        } else if (doctorDTO.getSpecialization() != null) {
+            // Nếu không có specialtyId nhưng có specialization
+            doctor.setSpecialization(doctorDTO.getSpecialization());
+        }
+        
+        return doctorRepository.save(doctor);
+    }
     /**
      * Lấy danh sách khung giờ trống của bác sĩ theo ngày
      */

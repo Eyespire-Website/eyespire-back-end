@@ -1,10 +1,13 @@
 package org.eyespire.eyespireapi.controller;
 
+import org.eyespire.eyespireapi.dto.DoctorDTO;
+import org.eyespire.eyespireapi.dto.LoginCredentialsEmailRequest;
+import org.eyespire.eyespireapi.model.Doctor;
 import org.eyespire.eyespireapi.model.User;
 import org.eyespire.eyespireapi.model.enums.UserRole;
-import org.eyespire.eyespireapi.service.UserService;
+import org.eyespire.eyespireapi.service.DoctorService;
 import org.eyespire.eyespireapi.service.EmailService;
-import org.eyespire.eyespireapi.dto.LoginCredentialsEmailRequest;
+import org.eyespire.eyespireapi.service.UserService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -12,7 +15,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
+import java.util.Optional;
 
 @RestController
 @RequestMapping("/api/admin")
@@ -24,6 +27,9 @@ public class AdminController {
     
     @Autowired
     private EmailService emailService;
+    
+    @Autowired
+    private DoctorService doctorService;
 
     // Lấy danh sách tất cả nhân viên (không bao gồm bệnh nhân và admin)
     @GetMapping("/staff")
@@ -130,6 +136,65 @@ public class AdminController {
             return ResponseEntity.internalServerError().body(Map.of(
                 "success", false,
                 "message", "Gửi email thất bại: " + e.getMessage()
+            ));
+        }
+    }
+    
+    // Lấy thông tin bác sĩ theo User ID
+    @GetMapping("/doctors/user/{userId}")
+    public ResponseEntity<?> getDoctorByUserId(@PathVariable Integer userId) {
+        try {
+            Optional<Doctor> doctorOpt = doctorService.getDoctorByUserId(userId);
+            if (doctorOpt.isPresent()) {
+                return ResponseEntity.ok(doctorOpt.get());
+            } else {
+                return ResponseEntity.notFound().build();
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+            return ResponseEntity.internalServerError().body(Map.of(
+                "success", false,
+                "message", "Lỗi khi lấy thông tin bác sĩ: " + e.getMessage()
+            ));
+        }
+    }
+    
+    // Tạo mới thông tin bác sĩ
+    @PostMapping("/doctors")
+    public ResponseEntity<?> createDoctor(@RequestBody DoctorDTO doctorDTO) {
+        try {
+            Doctor createdDoctor = doctorService.createDoctor(doctorDTO);
+            return ResponseEntity.ok(createdDoctor);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of(
+                "success", false,
+                "message", e.getMessage()
+            ));
+        } catch (Exception e) {
+            e.printStackTrace();
+            return ResponseEntity.internalServerError().body(Map.of(
+                "success", false,
+                "message", "Lỗi khi tạo thông tin bác sĩ: " + e.getMessage()
+            ));
+        }
+    }
+    
+    // Cập nhật thông tin bác sĩ
+    @PutMapping("/doctors/{id}")
+    public ResponseEntity<?> updateDoctor(@PathVariable Integer id, @RequestBody DoctorDTO doctorDTO) {
+        try {
+            Doctor updatedDoctor = doctorService.updateDoctor(id, doctorDTO);
+            return ResponseEntity.ok(updatedDoctor);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of(
+                "success", false,
+                "message", e.getMessage()
+            ));
+        } catch (Exception e) {
+            e.printStackTrace();
+            return ResponseEntity.internalServerError().body(Map.of(
+                "success", false,
+                "message", "Lỗi khi cập nhật thông tin bác sĩ: " + e.getMessage()
             ));
         }
     }

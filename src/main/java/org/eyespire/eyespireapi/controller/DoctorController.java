@@ -1,5 +1,6 @@
 package org.eyespire.eyespireapi.controller;
 
+import org.eyespire.eyespireapi.dto.DoctorDTO;
 import org.eyespire.eyespireapi.dto.DoctorTimeSlotDTO;
 import org.eyespire.eyespireapi.model.Doctor;
 import org.eyespire.eyespireapi.service.DoctorService;
@@ -49,6 +50,16 @@ public class DoctorController {
     }
     
     /**
+     * Lấy thông tin bác sĩ theo User ID
+     */
+    @GetMapping("/by-user/{userId}")
+    public ResponseEntity<?> getDoctorByUserId(@PathVariable Integer userId) {
+        return doctorService.getDoctorByUserId(userId)
+                .map(ResponseEntity::ok)
+                .orElse(ResponseEntity.notFound().build());
+    }
+    
+    /**
      * Lấy danh sách khung giờ trống của bác sĩ theo ngày
      */
     @GetMapping("/{id}/available-slots")
@@ -69,5 +80,18 @@ public class DoctorController {
         LocalDateTime appointmentTime = LocalDateTime.of(date, time);
         boolean isAvailable = doctorService.isDoctorAvailable(id, appointmentTime);
         return ResponseEntity.ok(Map.of("available", isAvailable));
+    }
+    
+    /**
+     * Cập nhật thông tin bác sĩ
+     */
+    @PutMapping("/{id}")
+    public ResponseEntity<?> updateDoctor(@PathVariable Integer id, @RequestBody DoctorDTO doctorDTO) {
+        try {
+            Doctor updatedDoctor = doctorService.updateDoctor(id, doctorDTO);
+            return ResponseEntity.ok(updatedDoctor);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
     }
 }
