@@ -37,6 +37,81 @@ public class UserService {
         Optional<User> userOptional = userRepository.findById(id);
         return userOptional.orElse(null);
     }
+    
+    // Phương thức mới để AdminController sử dụng
+    public User findById(Integer id) {
+        return getUserById(id);
+    }
+    
+    // Phương thức mới để lấy tất cả nhân viên theo danh sách vai trò
+    public List<User> findAllByRoleIn(List<UserRole> roles) {
+        return userRepository.findByRoleIn(roles);
+    }
+    
+    // Phương thức mới để lấy tất cả nhân viên theo vai trò
+    public List<User> findAllByRole(UserRole role) {
+        return userRepository.findByRole(role);
+    }
+    
+    // Phương thức mới để tạo người dùng mới (nhân viên)
+    public User createUser(User user) {
+        // Mã hóa mật khẩu trước khi lưu
+        if (user.getPassword() != null) {
+            user.setPassword(passwordEncoder.encode(user.getPassword()));
+        }
+        return userRepository.save(user);
+    }
+    
+    // Phương thức mới để cập nhật người dùng (nhân viên)
+    public User updateUser(User user) {
+        User existingUser = findById(user.getId());
+        if (existingUser == null) {
+            throw new RuntimeException("Không tìm thấy người dùng");
+        }
+        
+        // Cập nhật thông tin cơ bản
+        existingUser.setName(user.getName());
+        existingUser.setEmail(user.getEmail());
+        existingUser.setPhone(user.getPhone());
+        existingUser.setRole(user.getRole());
+        
+        // Cập nhật các thông tin khác nếu có
+        if (user.getGender() != null) {
+            existingUser.setGender(user.getGender());
+        }
+        
+        if (user.getDateOfBirth() != null) {
+            existingUser.setDateOfBirth(user.getDateOfBirth());
+        }
+        
+        if (user.getProvince() != null) {
+            existingUser.setProvince(user.getProvince());
+        }
+        
+        if (user.getDistrict() != null) {
+            existingUser.setDistrict(user.getDistrict());
+        }
+        
+        if (user.getWard() != null) {
+            existingUser.setWard(user.getWard());
+        }
+        
+        if (user.getAddressDetail() != null) {
+            existingUser.setAddressDetail(user.getAddressDetail());
+        }
+        
+        // Cập nhật mật khẩu nếu có
+        if (user.getPassword() != null && !user.getPassword().isEmpty()) {
+            existingUser.setPassword(passwordEncoder.encode(user.getPassword()));
+        }
+        
+        return userRepository.save(existingUser);
+    }
+    
+    // Phương thức mới để xóa người dùng (nhân viên)
+    public void deleteUser(Integer id) {
+        userRepository.deleteById(id);
+    }
 
     public User updateProfile(Integer id, UpdateProfileRequest request) {
         Optional<User> userOptional = userRepository.findById(id);
