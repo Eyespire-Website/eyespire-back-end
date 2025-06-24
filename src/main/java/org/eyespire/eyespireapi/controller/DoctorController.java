@@ -2,10 +2,13 @@ package org.eyespire.eyespireapi.controller;
 
 import org.eyespire.eyespireapi.dto.DoctorDTO;
 import org.eyespire.eyespireapi.dto.DoctorTimeSlotDTO;
+import org.eyespire.eyespireapi.model.Appointment;
 import org.eyespire.eyespireapi.model.Doctor;
+import org.eyespire.eyespireapi.service.AppointmentService;
 import org.eyespire.eyespireapi.service.DoctorService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -14,6 +17,7 @@ import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/doctors")
@@ -22,7 +26,10 @@ public class DoctorController {
     
     @Autowired
     private DoctorService doctorService;
-    
+
+    @Autowired
+    private AppointmentService appointmentService;
+
     /**
      * Lấy danh sách tất cả bác sĩ
      */
@@ -92,6 +99,43 @@ public class DoctorController {
             return ResponseEntity.ok(updatedDoctor);
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
+    // Lấy danh sách cuộc hẹn của bác sĩ dựa trên userId
+    @GetMapping("/by-user/{userId}/appointments")
+    public ResponseEntity<?> getDoctorAppointmentsByUserId(@PathVariable Integer userId) {
+        try {
+            Integer doctorId = doctorService.getDoctorIdByUserId(userId);
+            List<Appointment> appointments = appointmentService.getAppointmentsByDoctor(doctorId);
+            return ResponseEntity.ok(appointments);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body("Không tìm thấy bác sĩ: " + e.getMessage());
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("Lỗi khi lấy danh sách cuộc hẹn: " + e.getMessage());
+        }
+    }
+    @GetMapping("/by-user/{userId}/patients")
+    public ResponseEntity<?> getPatientsByDoctor(@PathVariable Integer userId) {
+        try {
+            Integer doctorId = doctorService.getDoctorIdByUserId(userId);
+            List<Appointment> appointments = appointmentService.getAppointmentsByDoctor(doctorId);
+            List<Object> patients = appointments.stream()
+                    .map(appointment -> appointment.getPatient())
+                    .distinct()
+                    .map(user -> new Object() {
+                        public final Integer id = user.getId();
+                        public final String name = user.getName();
+                        public final String phone = user.getPhone();
+                        public final String email = user.getEmail();
+                    })
+                    .collect(Collectors.toList());
+            return ResponseEntity.ok(patients);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body("Không tìm thấy bác sĩ: " + e.getMessage());
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("Lỗi khi lấy danh sách bệnh nhân: " + e.getMessage());
         }
     }
 }
