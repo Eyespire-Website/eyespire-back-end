@@ -279,4 +279,9 @@ public class DoctorService {
         // Nếu không có lịch hẹn nào, bác sĩ khả dụng
         return appointments.isEmpty();
     }
+    public Integer getDoctorIdByUserId(Integer userId) {
+        Optional<Doctor> doctorOpt = doctorRepository.findByUserId(userId);
+        return doctorOpt.map(Doctor::getId).orElseThrow(() ->
+                new IllegalArgumentException("Không tìm thấy bác sĩ liên kết với userId: " + userId));
+    }
 }

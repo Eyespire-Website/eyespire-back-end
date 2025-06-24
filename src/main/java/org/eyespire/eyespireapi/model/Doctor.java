@@ -66,4 +66,23 @@ public class Doctor {
     @OneToMany(mappedBy = "doctor")
     @JsonIgnore
     private List<Appointment> appointments = new ArrayList<>();
+
+    @Override
+    public String toString() {
+        return "Doctor{" +
+                "id=" + id +
+                ", name='" + name + '\'' +
+                ", specialization='" + specialization + '\'' +
+                ", qualification='" + qualification + '\'' +
+                ", experience='" + experience + '\'' +
+                ", imageUrl='" + imageUrl + '\'' +
+                ", description='" + description + '\'' +
+                ", userId=" + userId +
+                ", user=" + user +
+                ", specialty=" + specialty +
+                ", services=" + services +
+                ", availabilities=" + availabilities +
+                ", appointments=" + appointments +
+                '}';
+    }
 }
