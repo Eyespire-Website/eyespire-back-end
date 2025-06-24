@@ -186,6 +186,37 @@ public class AppointmentController {
         }
     }
 
+    @GetMapping("/by-date")
+    public ResponseEntity<?> getAppointmentsByDate(
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
+        try {
+            List<Appointment> appointments = appointmentService.getAppointmentsByDate(date);
+            List<AppointmentDTO> appointmentDTOs = appointments.stream()
+                    .map(this::convertToDTO)
+                    .collect(Collectors.toList());
+            return ResponseEntity.ok(appointmentDTOs);
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body("Lỗi khi lấy danh sách cuộc hẹn theo ngày: " + e.getMessage());
+        }
+    }
+
+    @GetMapping("/by-doctor-and-date")
+    public ResponseEntity<?> getAppointmentsByDoctorAndDate(
+            @RequestParam Integer doctorId,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
+        try {
+            List<Appointment> appointments = appointmentService.getAppointmentsByDoctorAndDate(doctorId, date);
+            List<AppointmentDTO> appointmentDTOs = appointments.stream()
+                    .map(this::convertToDTO)
+                    .collect(Collectors.toList());
+            return ResponseEntity.ok(appointmentDTOs);
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body("Lỗi khi lấy danh sách cuộc hẹn theo bác sĩ và ngày: " + e.getMessage());
+        }
+    }
+
     // Chuyển đổi từ Appointment sang AppointmentDTO
     private AppointmentDTO convertToDTO(Appointment appointment) {
         AppointmentDTO dto = new AppointmentDTO();
