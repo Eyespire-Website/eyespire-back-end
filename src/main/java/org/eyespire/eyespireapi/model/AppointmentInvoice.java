@@ -26,11 +26,20 @@ public class AppointmentInvoice {
     @Column(name = "total_amount", precision = 10, scale = 2)
     private BigDecimal totalAmount;
     
+    @Column(name = "deposit_amount", precision = 10, scale = 2)
+    private BigDecimal depositAmount;
+    
+    @Column(name = "remaining_amount", precision = 10, scale = 2)
+    private BigDecimal remainingAmount;
+    
     @Column(name = "transaction_id", length = 255)
     private String transactionId;
     
     @Column(name = "paid_at")
     private LocalDateTime paidAt;
+    
+    @Column(name = "is_fully_paid")
+    private Boolean isFullyPaid = false;
     
     @Column(name = "created_at")
     private LocalDateTime createdAt;

@@ -38,4 +38,36 @@ public class SpecialtyController {
         List<Specialty> specialties = specialtyRepository.findByNameContainingIgnoreCase(keyword);
         return ResponseEntity.ok(specialties);
     }
+    
+    // Thêm chuyên khoa mới
+    @PostMapping
+    public ResponseEntity<Specialty> createSpecialty(@RequestBody Specialty specialty) {
+        Specialty savedSpecialty = specialtyRepository.save(specialty);
+        return ResponseEntity.ok(savedSpecialty);
+    }
+    
+    // Cập nhật thông tin chuyên khoa
+    @PutMapping("/{id}")
+    public ResponseEntity<Specialty> updateSpecialty(@PathVariable Integer id, @RequestBody Specialty specialtyDetails) {
+        return specialtyRepository.findById(id)
+                .map(specialty -> {
+                    specialty.setName(specialtyDetails.getName());
+                    specialty.setDescription(specialtyDetails.getDescription());
+                    specialty.setImageUrl(specialtyDetails.getImageUrl());
+                    Specialty updatedSpecialty = specialtyRepository.save(specialty);
+                    return ResponseEntity.ok(updatedSpecialty);
+                })
+                .orElseGet(() -> ResponseEntity.notFound().build());
+    }
+    
+    // Xóa chuyên khoa
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> deleteSpecialty(@PathVariable Integer id) {
+        return specialtyRepository.findById(id)
+                .map(specialty -> {
+                    specialtyRepository.delete(specialty);
+                    return ResponseEntity.ok().<Void>build();
+                })
+                .orElseGet(() -> ResponseEntity.notFound().build());
+    }
 }

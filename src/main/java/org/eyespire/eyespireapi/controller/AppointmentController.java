@@ -1,11 +1,11 @@
 package org.eyespire.eyespireapi.controller;
 
-import org.eyespire.eyespireapi.dto.AppointmentDTO;
-import org.eyespire.eyespireapi.dto.DoctorTimeSlotDTO;
-import org.eyespire.eyespireapi.dto.UserDTO;
+import org.eyespire.eyespireapi.dto.*;
 import org.eyespire.eyespireapi.model.Appointment;
+import org.eyespire.eyespireapi.model.AppointmentInvoice;
 import org.eyespire.eyespireapi.model.User;
 import org.eyespire.eyespireapi.model.enums.AppointmentStatus;
+import org.eyespire.eyespireapi.service.AppointmentInvoiceService;
 import org.eyespire.eyespireapi.service.AppointmentService;
 import org.eyespire.eyespireapi.service.UserService;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -14,8 +14,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-import java.time.format.DateTimeFormatter;
 import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -28,6 +28,9 @@ public class AppointmentController {
 
     @Autowired
     private AppointmentService appointmentService;
+
+    @Autowired
+    private AppointmentInvoiceService appointmentInvoiceService;
 
     @Autowired
     private UserService userService;
@@ -70,17 +73,18 @@ public class AppointmentController {
         }
     }
 
-    // Lấy chi tiết lịch hẹn
+    /**
+     * API để lấy thông tin chi tiết của một cuộc hẹn theo ID
+     */
     @GetMapping("/{id}")
     public ResponseEntity<?> getAppointmentById(@PathVariable Integer id) {
         try {
-            Optional<Appointment> appointmentOpt = appointmentService.getAppointmentById(id);
-            if (!appointmentOpt.isPresent()) {
-                return ResponseEntity.status(HttpStatus.NOT_FOUND).body("Không tìm thấy lịch hẹn");
-            }
-            return ResponseEntity.ok(appointmentOpt.get());
+            Optional<Appointment> appointment = appointmentService.getAppointmentById(id);
+            return appointment.map(appt -> ResponseEntity.ok(convertToDTO(appt)))
+                    .orElseGet(() -> ResponseEntity.notFound().build());
         } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Lỗi khi lấy thông tin lịch hẹn: " + e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("Lỗi khi lấy thông tin chi tiết cuộc hẹn: " + e.getMessage());
         }
     }
 
@@ -88,19 +92,9 @@ public class AppointmentController {
     @PutMapping("/{id}/cancel")
     public ResponseEntity<?> cancelAppointment(@PathVariable Integer id) {
         try {
-            Optional<Appointment> appointmentOpt = appointmentService.getAppointmentById(id);
-            if (!appointmentOpt.isPresent()) {
-                return ResponseEntity.status(HttpStatus.NOT_FOUND).body("Không tìm thấy lịch hẹn");
-            }
-
-            Appointment appointment = appointmentOpt.get();
-            // Chỉ cho phép hủy lịch hẹn đang ở trạng thái PENDING hoặc CONFIRMED
-            if (appointment.getStatus() != AppointmentStatus.PENDING && appointment.getStatus() != AppointmentStatus.CONFIRMED) {
-                return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Không thể hủy lịch hẹn ở trạng thái " + appointment.getStatus());
-            }
-
-            Appointment updatedAppointment = appointmentService.cancelAppointment(id);
-            return ResponseEntity.ok(updatedAppointment);
+            Optional<Appointment> updatedAppointment = appointmentService.cancelAppointment(id);
+            return updatedAppointment.map(ResponseEntity::ok)
+                    .orElseGet(() -> ResponseEntity.notFound().build());
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Lỗi khi hủy lịch hẹn: " + e.getMessage());
         }
@@ -127,8 +121,9 @@ public class AppointmentController {
                 return ResponseEntity.status(HttpStatus.NOT_FOUND).body("Không tìm thấy lịch hẹn");
             }
 
-            Appointment updatedAppointment = appointmentService.updateAppointmentStatus(id, status);
-            return ResponseEntity.ok(updatedAppointment);
+            Optional<Appointment> updatedAppointment = appointmentService.updateAppointmentStatus(id, status);
+            return updatedAppointment.map(ResponseEntity::ok)
+                    .orElseGet(() -> ResponseEntity.notFound().build());
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Lỗi khi cập nhật trạng thái lịch hẹn: " + e.getMessage());
         }
@@ -138,22 +133,9 @@ public class AppointmentController {
     @PutMapping("/{id}")
     public ResponseEntity<?> updateAppointment(@PathVariable Integer id, @RequestBody AppointmentDTO appointmentDTO) {
         try {
-            Optional<Appointment> appointmentOpt = appointmentService.getAppointmentById(id);
-
-            if (!appointmentOpt.isPresent()) {
-                return ResponseEntity.status(HttpStatus.NOT_FOUND).body("Không tìm thấy lịch hẹn");
-            }
-
-            Appointment appointment = appointmentOpt.get();
-
-            // Chỉ cho phép cập nhật nếu trạng thái là PENDING
-            if (appointment.getStatus() != AppointmentStatus.PENDING) {
-                return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Chỉ có thể cập nhật lịch hẹn ở trạng thái PENDING");
-            }
-
-            Appointment updatedAppointment = appointmentService.updateAppointment(id, appointmentDTO);
-
-            return ResponseEntity.ok(updatedAppointment);
+            Optional<Appointment> updatedAppointment = appointmentService.updateAppointment(id, appointmentDTO);
+            return updatedAppointment.map(ResponseEntity::ok)
+                    .orElseGet(() -> ResponseEntity.notFound().build());
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Lỗi khi cập nhật lịch hẹn: " + e.getMessage());
         }
@@ -217,6 +199,77 @@ public class AppointmentController {
         }
     }
 
+    /**
+     * API để chuyển trạng thái cuộc hẹn sang chờ thanh toán sau khi bác sĩ tạo hồ sơ bệnh án
+     */
+    @PutMapping("/{id}/waiting-payment")
+    public ResponseEntity<?> setAppointmentWaitingPayment(
+            @PathVariable Integer id,
+            @RequestBody WaitingPaymentRequestDTO request) {
+        try {
+            Optional<Appointment> updatedAppointment = appointmentService.setAppointmentWaitingPayment(id, request.getTotalAmount());
+            return updatedAppointment.map(ResponseEntity::ok)
+                    .orElseGet(() -> ResponseEntity.notFound().build());
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Lỗi khi chuyển trạng thái cuộc hẹn sang chờ thanh toán: " + e.getMessage());
+        }
+    }
+
+    /**
+     * API để đánh dấu cuộc hẹn đã thanh toán và chuyển trạng thái sang hoàn thành
+     */
+    @PutMapping("/{id}/mark-as-paid")
+    public ResponseEntity<?> markAppointmentAsPaid(
+            @PathVariable Integer id,
+            @RequestBody InvoicePaymentRequestDTO request) {
+        try {
+            Optional<Appointment> updatedAppointment = appointmentService.markAppointmentAsPaid(id, request.getTransactionId());
+            return updatedAppointment.map(ResponseEntity::ok)
+                    .orElseGet(() -> ResponseEntity.notFound().build());
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Lỗi khi đánh dấu cuộc hẹn đã thanh toán: " + e.getMessage());
+        }
+    }
+
+    /**
+     * API để lấy danh sách cuộc hẹn đang chờ thanh toán
+     */
+    @GetMapping("/waiting-payment")
+    public ResponseEntity<?> getWaitingPaymentAppointments() {
+        try {
+            List<Appointment> appointments = appointmentService.getWaitingPaymentAppointments();
+            return ResponseEntity.ok(appointments);
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Lỗi khi lấy danh sách cuộc hẹn đang chờ thanh toán: " + e.getMessage());
+        }
+    }
+
+    /**
+     * API để lấy danh sách cuộc hẹn đang chờ thanh toán của bác sĩ
+     */
+    @GetMapping("/doctor/{doctorId}/waiting-payment")
+    public ResponseEntity<?> getWaitingPaymentAppointmentsByDoctor(@PathVariable Integer doctorId) {
+        try {
+            List<Appointment> appointments = appointmentService.getWaitingPaymentAppointmentsByDoctor(doctorId);
+            return ResponseEntity.ok(appointments);
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Lỗi khi lấy danh sách cuộc hẹn đang chờ thanh toán của bác sĩ: " + e.getMessage());
+        }
+    }
+
+    /**
+     * API để lấy thông tin hóa đơn của cuộc hẹn
+     */
+    @GetMapping("/{id}/invoice")
+    public ResponseEntity<?> getAppointmentInvoice(@PathVariable Integer id) {
+        try {
+            Optional<AppointmentInvoice> invoice = appointmentInvoiceService.getInvoiceByAppointmentId(id);
+            return invoice.map(ResponseEntity::ok).orElseGet(() -> ResponseEntity.notFound().build());
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Lỗi khi lấy thông tin hóa đơn của cuộc hẹn: " + e.getMessage());
+        }
+    }
+
     // Chuyển đổi từ Appointment sang AppointmentDTO
     private AppointmentDTO convertToDTO(Appointment appointment) {
         AppointmentDTO dto = new AppointmentDTO();
@@ -260,7 +313,7 @@ public class AppointmentController {
             patientDTO.setWard(appointment.getPatient().getWard());
             patientDTO.setAddressDetail(appointment.getPatient().getAddressDetail());
 
-            // ⚠️ Fix lỗi copy paste: village không phải addressDetail
+            // Fix lỗi copy paste: village không phải addressDetail
             patientDTO.setVillage(appointment.getPatient().getAddressDetail());
 
             patientDTO.setGender(appointment.getPatient().getGender() != null
@@ -272,6 +325,47 @@ public class AppointmentController {
                     : null);
 
             dto.setPatient(patientDTO);
+        }
+
+        // Thêm thông tin thanh toán từ AppointmentInvoice
+        try {
+            Optional<AppointmentInvoice> invoiceOpt = appointmentInvoiceService.getInvoiceByAppointmentId(appointment.getId());
+            if (invoiceOpt.isPresent()) {
+                AppointmentInvoice invoice = invoiceOpt.get();
+                dto.setTotalAmount(invoice.getTotalAmount());
+                dto.setDepositAmount(invoice.getDepositAmount());
+                dto.setRemainingAmount(invoice.getRemainingAmount());
+                dto.setIsFullyPaid(invoice.getIsFullyPaid());
+                dto.setPaidAt(invoice.getPaidAt());
+                
+                // Lưu transactionId dưới dạng Integer nếu có thể parse, nếu không thì lưu null
+                try {
+                    if (invoice.getTransactionId() != null && !invoice.getTransactionId().isEmpty()) {
+                        dto.setPaymentId(Integer.valueOf(invoice.getTransactionId()));
+                    }
+                } catch (NumberFormatException e) {
+                    // Nếu không thể parse thành Integer, để paymentId là null
+                    dto.setPaymentId(null);
+                }
+            }
+        } catch (Exception e) {
+            // Log lỗi nhưng không làm gián đoạn quá trình chuyển đổi
+            System.err.println("Lỗi khi lấy thông tin hóa đơn: " + e.getMessage());
+        }
+
+        // Thêm thông tin dịch vụ
+        if (appointment.getService() != null) {
+            dto.setService(appointment.getService());
+        }
+
+        // Thêm thông tin bác sĩ
+        if (appointment.getDoctor() != null) {
+            DoctorDTO doctorDTO = new DoctorDTO();
+            doctorDTO.setId(appointment.getDoctor().getId());
+            doctorDTO.setName(appointment.getDoctor().getName());
+            doctorDTO.setSpecialization(appointment.getDoctor().getSpecialization());
+            doctorDTO.setImageUrl(appointment.getDoctor().getImageUrl());
+            dto.setDoctor(doctorDTO);
         }
 
         return dto;

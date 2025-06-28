@@ -20,7 +20,14 @@ public class WebConfig implements WebMvcConfigurer {
         Path uploadPath = Paths.get(uploadDir);
         String uploadAbsolutePath = uploadPath.toFile().getAbsolutePath();
         
+        // Đảm bảo đường dẫn kết thúc bằng dấu /
+        if (!uploadAbsolutePath.endsWith("/") && !uploadAbsolutePath.endsWith("\\")) {
+            uploadAbsolutePath += "/";
+        }
+        
+        System.out.println("Serving static files from: " + uploadAbsolutePath);
+        
         registry.addResourceHandler("/uploads/**")
-                .addResourceLocations("file:" + uploadAbsolutePath + "/");
+                .addResourceLocations("file:" + uploadAbsolutePath);
     }
 }
