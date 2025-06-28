@@ -17,6 +17,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -42,6 +43,9 @@ public class MedicalRecordService {
 
     @Autowired
     private FileStorageService fileStorageService;
+
+    @Autowired
+    private AppointmentInvoiceService appointmentInvoiceService;
 
     @Transactional
     public MedicalRecord createMedicalRecord(Integer patientId, Integer doctorId, String diagnosis,
@@ -96,7 +100,31 @@ public class MedicalRecordService {
             record.setRecordFileUrl(fileUrl);
         }
 
-        return medicalRecordRepository.save(record);
+        MedicalRecord savedRecord = medicalRecordRepository.save(record);
+        
+        // Nếu có cuộc hẹn, cập nhật hóa đơn và trạng thái cuộc hẹn sang WAITING_PAYMENT
+        if (appointmentId != null) {
+            // Tính tổng chi phí dựa trên các sản phẩm được kê
+            BigDecimal totalAmount = BigDecimal.ZERO;
+            if (productQuantities != null && !productQuantities.isEmpty()) {
+                totalAmount = productQuantities.stream()
+                    .map(pq -> {
+                        Integer productId = pq.get("productId");
+                        Integer quantity = pq.get("quantity");
+                        Product product = productRepository.findById(productId).orElse(null);
+                        if (product != null) {
+                            return product.getPrice().multiply(new BigDecimal(quantity));
+                        }
+                        return BigDecimal.ZERO;
+                    })
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+            }
+            
+            // Cập nhật hóa đơn và trạng thái cuộc hẹn
+            appointmentInvoiceService.updateInvoiceAfterMedicalRecord(appointmentId, totalAmount);
+        }
+        
+        return savedRecord;
     }
 
     public List<Product> getProductsMedicine() {
@@ -112,8 +140,34 @@ public class MedicalRecordService {
         System.out.println("Found " + records.size() + " records for doctorId: " + doctor.getId());
         return records;
     }
+
+    public List<MedicalRecord> getPatientMedicalRecordsByUserId(Integer userId) {
+        // Validate userId
+        User patient = userRepository.findById(userId)
+                .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy bệnh nhân với userId: " + userId));
+        System.out.println("Looking up medical records for patientId: " + userId);
+        
+        List<MedicalRecord> records = medicalRecordRepository.findByPatientId(userId);
+        System.out.println("Found " + records.size() + " records for patientId: " + userId);
+        return records;
+    }
+
+    public java.util.Optional<MedicalRecord> getMedicalRecordById(Integer recordId) {
+        System.out.println("Looking up medical record with ID: " + recordId);
+        return medicalRecordRepository.findById(recordId);
+    }
+    
     public boolean existsByAppointmentId(Integer appointmentId) {
         return medicalRecordRepository.existsByAppointmentId(appointmentId);
     }
-
+    
+    /**
+     * Lấy hồ sơ y tế theo ID cuộc hẹn
+     * @param appointmentId ID của cuộc hẹn
+     * @return Hồ sơ y tế nếu tồn tại
+     */
+    public java.util.Optional<MedicalRecord> getMedicalRecordByAppointmentId(Integer appointmentId) {
+        System.out.println("Looking up medical record for appointmentId: " + appointmentId);
+        return medicalRecordRepository.findByAppointmentId(appointmentId);
+    }
 }

@@ -65,8 +65,8 @@ public class MedicalRecordController {
                 Appointment appointment = appointmentService.getAppointmentById(appointmentId)
                         .orElseThrow(() -> new IllegalArgumentException("Cuộc hẹn không tồn tại!"));
                 System.out.println("Appointment status for ID " + appointmentId + ": " + appointment.getStatus().name());
-                if (appointment.getStatus() != AppointmentStatus.COMPLETED) {
-                    return ResponseEntity.badRequest().body(new ErrorResponse("Cuộc hẹn chưa hoàn thành, không thể tạo hồ sơ!"));
+                if (appointment.getStatus() != AppointmentStatus.CONFIRMED) {
+                    return ResponseEntity.badRequest().body(new ErrorResponse("Cuộc hẹn chưa được xác nhận, không thể tạo hồ sơ!"));
                 }
             }
 
@@ -150,6 +150,7 @@ public class MedicalRecordController {
     }
 
     @GetMapping("/medical-records/doctor/{doctorId}")
+    @PreAuthorize("hasRole('DOCTOR')")
     public ResponseEntity<?> getDoctorMedicalRecords(@PathVariable Integer doctorId) {
         try {
             String username = SecurityContextHolder.getContext().getAuthentication().getName();
@@ -186,6 +187,60 @@ public class MedicalRecordController {
         }
     }
 
+    @GetMapping("/medical-records/patient/{patientId}")
+    public ResponseEntity<?> getPatientMedicalRecords(@PathVariable Integer patientId) {
+        try {
+            String username = SecurityContextHolder.getContext().getAuthentication().getName();
+            System.out.println("Received GET /medical-records/patient/" + patientId + " | User: " + username);
+
+            // Validate patientId
+            if (patientId == null || patientId <= 0) {
+                System.err.println("Invalid patientId: " + patientId);
+                return ResponseEntity.badRequest().body(new ErrorResponse("ID bệnh nhân không hợp lệ!"));
+            }
+
+            List<MedicalRecord> records = medicalRecordService.getPatientMedicalRecordsByUserId(patientId);
+            System.out.println("Query executed for patientId: " + patientId + " | Found: " + records.size() + " records");
+            
+            return ResponseEntity.ok(records);
+        } catch (IllegalArgumentException e) {
+            System.err.println("Bad Request for patientId " + patientId + ": " + e.getMessage());
+            return ResponseEntity.badRequest().body(new ErrorResponse(e.getMessage()));
+        } catch (Exception e) {
+            System.err.println("Error fetching medical records for patientId " + patientId + ": " + e.getMessage());
+            e.printStackTrace();
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(new ErrorResponse("Lỗi server: " + e.getMessage()));
+        }
+    }
+
+    @GetMapping("/medical-records/{recordId}")
+    public ResponseEntity<?> getMedicalRecordById(@PathVariable Integer recordId) {
+        try {
+            String username = SecurityContextHolder.getContext().getAuthentication().getName();
+            System.out.println("Received GET /medical-records/" + recordId + " | User: " + username);
+
+            // Validate recordId
+            if (recordId == null || recordId <= 0) {
+                System.err.println("Invalid recordId: " + recordId);
+                return ResponseEntity.badRequest().body(new ErrorResponse("ID hồ sơ không hợp lệ!"));
+            }
+
+            MedicalRecord record = medicalRecordService.getMedicalRecordById(recordId)
+                    .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy hồ sơ điều trị với ID: " + recordId));
+            
+            return ResponseEntity.ok(record);
+        } catch (IllegalArgumentException e) {
+            System.err.println("Bad Request for recordId " + recordId + ": " + e.getMessage());
+            return ResponseEntity.badRequest().body(new ErrorResponse(e.getMessage()));
+        } catch (Exception e) {
+            System.err.println("Error fetching medical record for recordId " + recordId + ": " + e.getMessage());
+            e.printStackTrace();
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(new ErrorResponse("Lỗi server: " + e.getMessage()));
+        }
+    }
+
     @GetMapping("/medical-records/by-appointment/{appointmentId}")
     @PreAuthorize("hasRole('DOCTOR')")
     public ResponseEntity<?> checkMedicalRecordExistsByAppointmentId(@PathVariable Integer appointmentId) {
@@ -197,6 +252,58 @@ public class MedicalRecordController {
             return ResponseEntity.ok(new ExistsResponse(exists));
         } catch (Exception e) {
             System.err.println("Error checking medical record for appointmentId " + appointmentId + ": " + e.getMessage());
+            e.printStackTrace();
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(new ErrorResponse("Lỗi server: " + e.getMessage()));
+        }
+    }
+    
+    /**
+     * API để lấy thông tin chi tiết về thuốc từ hồ sơ y tế theo ID cuộc hẹn
+     * Bao gồm danh sách thuốc, số lượng và giá tiền
+     */
+    @GetMapping("/medical-records/by-appointment/{appointmentId}/medications")
+    @CrossOrigin(origins = "http://localhost:3000", allowCredentials = "true")
+    public ResponseEntity<?> getMedicationsByAppointmentId(@PathVariable Integer appointmentId) {
+        try {
+            System.out.println("Received request for medications by appointmentId: " + appointmentId);
+            
+            // Kiểm tra xem có hồ sơ y tế cho cuộc hẹn này không
+            if (!medicalRecordService.existsByAppointmentId(appointmentId)) {
+                return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                        .body(new ErrorResponse("Không tìm thấy hồ sơ y tế cho cuộc hẹn này"));
+            }
+            
+            // Lấy thông tin thuốc từ hồ sơ y tế
+            MedicalRecord medicalRecord = medicalRecordService.getMedicalRecordByAppointmentId(appointmentId)
+                    .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy hồ sơ y tế cho cuộc hẹn này"));
+            
+            // Tính tổng tiền thuốc
+            double totalMedicationAmount = medicalRecord.getRecommendedProducts().stream()
+                    .filter(mrp -> mrp.getProduct().getType() == org.eyespire.eyespireapi.model.enums.ProductType.MEDICINE)
+                    .mapToDouble(mrp -> mrp.getQuantity() * mrp.getProduct().getPrice().doubleValue())
+                    .sum();
+            
+            // Tạo response với danh sách thuốc và tổng tiền
+            Map<String, Object> response = Map.of(
+                "products", medicalRecord.getRecommendedProducts().stream()
+                    .filter(mrp -> mrp.getProduct().getType() == org.eyespire.eyespireapi.model.enums.ProductType.MEDICINE)
+                    .map(mrp -> Map.of(
+                        "id", mrp.getProduct().getId(),
+                        "name", mrp.getProduct().getName(),
+                        "price", mrp.getProduct().getPrice(),
+                        "quantity", mrp.getQuantity(),
+                        "totalPrice", mrp.getQuantity() * mrp.getProduct().getPrice().doubleValue()
+                    ))
+                    .collect(Collectors.toList()),
+                "totalAmount", totalMedicationAmount
+            );
+            
+            return ResponseEntity.ok(response);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(new ErrorResponse(e.getMessage()));
+        } catch (Exception e) {
+            System.err.println("Error fetching medications for appointmentId " + appointmentId + ": " + e.getMessage());
             e.printStackTrace();
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(new ErrorResponse("Lỗi server: " + e.getMessage()));

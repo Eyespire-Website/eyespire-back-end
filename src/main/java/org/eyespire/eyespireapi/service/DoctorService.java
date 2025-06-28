@@ -205,13 +205,17 @@ public class DoctorService {
             }
         }
 
-        // *** FIXED: Chỉ lấy các lịch hẹn KHÔNG bị hủy ***
-        List<Appointment> appointments = appointmentRepository.findByDoctorIdAndAppointmentTimeBetweenAndStatusNot(
+        // Chỉ lấy các lịch hẹn đang chờ xác nhận (PENDING) hoặc đã xác nhận (CONFIRMED)
+        List<Appointment> appointments = appointmentRepository.findByDoctorIdAndAppointmentTimeBetween(
                 doctorId,
                 date.atStartOfDay(),
-                date.atTime(23, 59, 59),
-                AppointmentStatus.CANCELED  // Loại trừ các appointment đã hủy
-        );
+                date.atTime(23, 59, 59)
+        ).stream()
+        .filter(appointment -> {
+            AppointmentStatus status = appointment.getStatus();
+            return status == AppointmentStatus.PENDING || status == AppointmentStatus.CONFIRMED;
+        })
+        .collect(Collectors.toList());
 
         // Cập nhật trạng thái khung giờ dựa trên lịch hẹn đã đặt (không bao gồm đã hủy)
         for (Appointment appointment : appointments) {
@@ -276,8 +280,16 @@ public class DoctorService {
         // Kiểm tra xem bác sĩ đã có lịch hẹn trong khung giờ đó chưa
         List<Appointment> appointments = appointmentRepository.findByDoctorIdAndAppointmentTime(doctorId, appointmentTime);
         
-        // Nếu không có lịch hẹn nào, bác sĩ khả dụng
-        return appointments.isEmpty();
+        // Lọc chỉ lấy các cuộc hẹn đang chờ xác nhận (PENDING) hoặc đã xác nhận (CONFIRMED)
+        List<Appointment> activeAppointments = appointments.stream()
+            .filter(appointment -> {
+                AppointmentStatus status = appointment.getStatus();
+                return status == AppointmentStatus.PENDING || status == AppointmentStatus.CONFIRMED;
+            })
+            .collect(Collectors.toList());
+        
+        // Nếu không có lịch hẹn đang hoạt động nào, bác sĩ khả dụng
+        return activeAppointments.isEmpty();
     }
     public Integer getDoctorIdByUserId(Integer userId) {
         Optional<Doctor> doctorOpt = doctorRepository.findByUserId(userId);

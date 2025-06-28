@@ -1,6 +1,7 @@
 package org.eyespire.eyespireapi.model;
 
 import org.eyespire.eyespireapi.model.enums.PaymentStatus;
+import org.eyespire.eyespireapi.model.enums.PaymentType;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -28,6 +29,15 @@ public class Payment {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private PaymentStatus status;
+    
+    @ManyToOne
+    @JoinColumn(name = "invoice_id")
+    private AppointmentInvoice appointmentInvoice;
+    
+    // Loại thanh toán: DEPOSIT (tiền cọc) hoặc FINAL (thanh toán cuối cùng)
+    @Enumerated(EnumType.STRING)
+    @Column(name = "payment_type")
+    private PaymentType paymentType;
 
     @Column(name = "payment_date")
     private LocalDateTime paymentDate;

@@ -33,11 +33,7 @@ public class MedicalService {
     private String imageUrl;
     
     private Integer duration; // Thời gian dịch vụ (phút)
-    
-    @ManyToOne
-    @JoinColumn(name = "category_id")
-    private ServiceCategory category;
-    
+
     @ManyToMany(mappedBy = "services")
     @JsonIgnore
     private List<Doctor> doctors = new ArrayList<>();

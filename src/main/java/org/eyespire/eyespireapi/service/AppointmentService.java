@@ -3,21 +3,30 @@ package org.eyespire.eyespireapi.service;
 import org.eyespire.eyespireapi.dto.AppointmentDTO;
 import org.eyespire.eyespireapi.dto.DoctorTimeSlotDTO;
 import org.eyespire.eyespireapi.model.Appointment;
+import org.eyespire.eyespireapi.model.AppointmentInvoice;
 import org.eyespire.eyespireapi.model.Doctor;
 import org.eyespire.eyespireapi.model.DoctorAvailability;
 import org.eyespire.eyespireapi.model.MedicalService;
+import org.eyespire.eyespireapi.model.Payment;
 import org.eyespire.eyespireapi.model.User;
 import org.eyespire.eyespireapi.model.enums.AppointmentStatus;
 import org.eyespire.eyespireapi.model.enums.AvailabilityStatus;
 import org.eyespire.eyespireapi.model.enums.GenderType;
+import org.eyespire.eyespireapi.model.enums.PaymentStatus;
+import org.eyespire.eyespireapi.model.enums.PaymentType;
+import org.eyespire.eyespireapi.model.enums.UserRole;
+import org.eyespire.eyespireapi.repository.AppointmentInvoiceRepository;
 import org.eyespire.eyespireapi.repository.AppointmentRepository;
 import org.eyespire.eyespireapi.repository.DoctorAvailabilityRepository;
 import org.eyespire.eyespireapi.repository.DoctorRepository;
 import org.eyespire.eyespireapi.repository.MedicalServiceRepository;
+import org.eyespire.eyespireapi.repository.PaymentRepository;
 import org.eyespire.eyespireapi.repository.UserRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
@@ -29,6 +38,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 @Service
 public class AppointmentService {
@@ -51,9 +61,22 @@ public class AppointmentService {
     @Autowired
     private DoctorAvailabilityRepository doctorAvailabilityRepository;
     
+    @Autowired
+    private AppointmentInvoiceRepository appointmentInvoiceRepository;
+    
+    @Autowired
+    private PaymentRepository paymentRepository;
+    
+    @Autowired
+    private AppointmentInvoiceService appointmentInvoiceService;
+    
+    // Số tiền cọc mặc định
+    private static final BigDecimal DEFAULT_DEPOSIT_AMOUNT = new BigDecimal("10000");
+    
     /**
      * Tạo lịch hẹn mới
      */
+    @Transactional
     public Appointment createAppointment(AppointmentDTO appointmentDTO) {
         // Kiểm tra xem đã có cuộc hẹn nào được tạo với paymentId này chưa
         if (appointmentDTO.getPaymentId() != null) {
@@ -94,26 +117,67 @@ public class AppointmentService {
         appointment.setDoctor(doctor);
         appointment.setService(service);
         appointment.setAppointmentTime(appointmentDateTime);
+        appointment.setStatus(AppointmentStatus.PENDING);
+        appointment.setNotes(appointmentDTO.getNotes());
+        appointment.setPaymentId(appointmentDTO.getPaymentId());
+        
+        // Thiết lập thông tin bệnh nhân trực tiếp vào đối tượng Appointment
         appointment.setPatientName(appointmentDTO.getPatientName());
         appointment.setPatientEmail(appointmentDTO.getPatientEmail());
         appointment.setPatientPhone(appointmentDTO.getPatientPhone());
-        appointment.setNotes(appointmentDTO.getNotes());
-        appointment.setStatus(AppointmentStatus.PENDING);
         
-        // Liên kết với người dùng nếu có
+        // Kiểm tra và đảm bảo thông tin bệnh nhân không null
+        if (appointment.getPatientEmail() == null || appointment.getPatientEmail().isEmpty()) {
+            throw new RuntimeException("Email bệnh nhân không được để trống");
+        }
+        if (appointment.getPatientName() == null || appointment.getPatientName().isEmpty()) {
+            throw new RuntimeException("Tên bệnh nhân không được để trống");
+        }
+        if (appointment.getPatientPhone() == null || appointment.getPatientPhone().isEmpty()) {
+            throw new RuntimeException("Số điện thoại bệnh nhân không được để trống");
+        }
+        
+        // Tìm bệnh nhân
+        User patient = null;
         if (appointmentDTO.getUserId() != null) {
-            Optional<User> user = userRepository.findById(appointmentDTO.getUserId());
-            user.ifPresent(appointment::setPatient);
+            patient = userRepository.findById(appointmentDTO.getUserId())
+                    .orElseThrow(() -> new RuntimeException("Không tìm thấy bệnh nhân"));
+        } else {
+            // Tạo bệnh nhân mới nếu không có ID
+            patient = new User();
+            patient.setName(appointmentDTO.getPatientName());
+            patient.setEmail(appointmentDTO.getPatientEmail());
+            patient.setPhone(appointmentDTO.getPatientPhone());
+            
+            // Thiết lập vai trò là PATIENT
+            patient.setRole(UserRole.PATIENT);
+            
+            patient = userRepository.save(patient);
         }
         
-        // Lưu paymentId nếu có
-        if (appointmentDTO.getPaymentId() != null) {
-            appointment.setPaymentId(appointmentDTO.getPaymentId());
-        }
+        appointment.setPatient(patient);
         
-        // Lưu lịch hẹn vào database
-        return appointmentRepository.save(appointment);
+        // Lưu lịch hẹn
+        appointment = appointmentRepository.save(appointment);
+        
+        // Tạo hóa đơn cho cuộc hẹn với tiền cọc
+        AppointmentInvoice invoice = appointmentInvoiceService.createInvoice(appointment, DEFAULT_DEPOSIT_AMOUNT);
+        
+        // Tạo thanh toán tiền cọc
+        Payment depositPayment = new Payment();
+        depositPayment.setTransactionNo(appointmentDTO.getPaymentId() != null ? appointmentDTO.getPaymentId().toString() : "DEPOSIT-" + appointment.getId());
+        depositPayment.setAmount(DEFAULT_DEPOSIT_AMOUNT);
+        depositPayment.setStatus(PaymentStatus.COMPLETED);
+        depositPayment.setAppointmentInvoice(invoice);
+        depositPayment.setPaymentType(PaymentType.DEPOSIT);
+        depositPayment.setPaymentDate(LocalDateTime.now());
+        depositPayment.setUserId(patient.getId());
+        paymentRepository.save(depositPayment);
+        
+        return appointment;
     }
+    
+    // Các phương thức hiện có giữ nguyên...
     
     /**
      * Lấy danh sách lịch hẹn của bệnh nhân
@@ -139,18 +203,18 @@ public class AppointmentService {
     /**
      * Cập nhật trạng thái lịch hẹn
      */
-    public Appointment updateAppointmentStatus(Integer id, AppointmentStatus status) {
-        Appointment appointment = appointmentRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Không tìm thấy lịch hẹn"));
-        
-        appointment.setStatus(status);
-        return appointmentRepository.save(appointment);
+    public Optional<Appointment> updateAppointmentStatus(Integer id, AppointmentStatus status) {
+        return appointmentRepository.findById(id)
+                .map(appointment -> {
+                    appointment.setStatus(status);
+                    return appointmentRepository.save(appointment);
+                });
     }
     
     /**
      * Hủy lịch hẹn
      */
-    public Appointment cancelAppointment(Integer id) {
+    public Optional<Appointment> cancelAppointment(Integer id) {
         return updateAppointmentStatus(id, AppointmentStatus.CANCELED);
     }
     
@@ -171,77 +235,67 @@ public class AppointmentService {
         LocalDateTime startOfDay = date.atStartOfDay();
         LocalDateTime endOfDay = date.atTime(23, 59, 59);
         
-        return appointmentRepository.findByDoctorIdAndAppointmentTimeBetweenOrderByAppointmentTimeAsc(
-                doctorId, startOfDay, endOfDay);
+        return appointmentRepository.findByDoctorIdAndAppointmentTimeBetweenOrderByAppointmentTimeAsc(doctorId, startOfDay, endOfDay);
     }
-    public Appointment updateAppointment(Integer id, AppointmentDTO appointmentDTO) {
-        Appointment appointment = appointmentRepository.findById(id)
-                .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy lịch hẹn"));
-
-        if (appointment.getStatus() != AppointmentStatus.PENDING) {
-            throw new IllegalStateException("Chỉ có thể cập nhật lịch hẹn ở trạng thái PENDING");
-        }
-
-        // Cập nhật các trường từ DTO
-        appointment.setService(medicalServiceRepository.findById(appointmentDTO.getServiceId())
-                .orElseThrow(() -> new IllegalArgumentException("Dịch vụ không tồn tại")));
-        appointment.setDoctor(doctorRepository.findById(appointmentDTO.getDoctorId())
-                .orElseThrow(() -> new IllegalArgumentException("Bác sĩ không tồn tại")));
-        appointment.setAppointmentTime(LocalDateTime.parse(
-                appointmentDTO.getAppointmentDate() + "T" + appointmentDTO.getTimeSlot()));
-        appointment.setStatus(AppointmentStatus.valueOf(appointmentDTO.getStatus()));
-        appointment.setNotes(appointmentDTO.getNotes());
-        appointment.setPatientName(appointmentDTO.getPatientName());
-        appointment.setPatientEmail(appointmentDTO.getPatientEmail());
-        appointment.setPatientPhone(appointmentDTO.getPatientPhone());
-
-        // Cập nhật thông tin bệnh nhân nếu có
-        if (appointmentDTO.getPatient() != null) {
-            User patient = userRepository.findById(appointmentDTO.getPatient().getId())
-                    .orElseGet(() -> {
-                        User newUser = new User();
-                        newUser.setId(appointmentDTO.getPatient().getId());
-                        return newUser;
-                    });
-            patient.setName(appointmentDTO.getPatient().getName());
-            patient.setEmail(appointmentDTO.getPatient().getEmail());
-            patient.setPhone(appointmentDTO.getPatient().getPhone());
-            patient.setProvince(appointmentDTO.getPatient().getProvince());
-            patient.setDistrict(appointmentDTO.getPatient().getDistrict());
-            patient.setWard(appointmentDTO.getPatient().getWard());
-            patient.setAddressDetail(appointmentDTO.getPatient().getAddressDetail());
-            patient.setAddressDetail(appointmentDTO.getPatient().getVillage());
-            if (appointmentDTO.getPatient().getGender() != null) {
-                patient.setGender(GenderType.valueOf(appointmentDTO.getPatient().getGender().toUpperCase()));
-            }
-            if (appointmentDTO.getPatient().getDateOfBirth() != null) {
-                patient.setDateOfBirth(LocalDate.parse(appointmentDTO.getPatient().getDateOfBirth()));
-            }
-            userRepository.save(patient);
-            appointment.setPatient(patient);
-        }
-
-        return appointmentRepository.save(appointment);
+    
+    public Optional<Appointment> updateAppointment(Integer id, AppointmentDTO appointmentDTO) {
+        return appointmentRepository.findById(id)
+                .map(appointment -> {
+                    // Cập nhật thông tin bác sĩ nếu có
+                    if (appointmentDTO.getDoctorId() != null) {
+                        Doctor doctor = doctorRepository.findById(appointmentDTO.getDoctorId())
+                                .orElseThrow(() -> new RuntimeException("Không tìm thấy bác sĩ"));
+                        appointment.setDoctor(doctor);
+                    }
+                    
+                    // Cập nhật thông tin dịch vụ nếu có
+                    if (appointmentDTO.getServiceId() != null) {
+                        MedicalService service = medicalServiceRepository.findById(appointmentDTO.getServiceId())
+                                .orElseThrow(() -> new RuntimeException("Không tìm thấy dịch vụ"));
+                        appointment.setService(service);
+                    }
+                    
+                    // Cập nhật thời gian nếu có
+                    if (appointmentDTO.getAppointmentDate() != null && appointmentDTO.getTimeSlot() != null) {
+                        LocalDate appointmentDate = LocalDate.parse(appointmentDTO.getAppointmentDate());
+                        LocalTime appointmentTime = LocalTime.parse(appointmentDTO.getTimeSlot());
+                        LocalDateTime appointmentDateTime = LocalDateTime.of(appointmentDate, appointmentTime);
+                        
+                        // Kiểm tra xem bác sĩ có khả dụng trong khung giờ này không
+                        if (appointment.getDoctor() != null && !doctorService.isDoctorAvailable(appointment.getDoctor().getId(), appointmentDateTime)) {
+                            throw new RuntimeException("Bác sĩ không có sẵn trong khung giờ này");
+                        }
+                        
+                        appointment.setAppointmentTime(appointmentDateTime);
+                    }
+                    
+                    // Cập nhật ghi chú nếu có
+                    if (appointmentDTO.getNotes() != null) {
+                        appointment.setNotes(appointmentDTO.getNotes());
+                    }
+                    
+                    // Cập nhật trạng thái nếu có
+                    if (appointmentDTO.getStatus() != null) {
+                        appointment.setStatus(AppointmentStatus.valueOf(appointmentDTO.getStatus()));
+                    }
+                    
+                    return appointmentRepository.save(appointment);
+                });
     }
-
+    
     public List<Appointment> getAllAppointments() {
         return appointmentRepository.findAll();
     }
-
+    
     /**
      * Lấy danh sách khung giờ trống theo ngày (không lọc theo bác sĩ)
      * Một khung giờ được coi là khả dụng nếu có ít nhất một bác sĩ làm việc trong khung giờ đó
      */
     public List<DoctorTimeSlotDTO> getAvailableTimeSlotsByDate(LocalDate date) {
-        // Tạo danh sách khung giờ mặc định từ 8h đến 16h
+        // Tạo danh sách khung giờ mặc định
         List<DoctorTimeSlotDTO> timeSlots = createDefaultTimeSlots();
         
-        // Mặc định tất cả các khung giờ là UNAVAILABLE
-        for (DoctorTimeSlotDTO slot : timeSlots) {
-            slot.setStatus(AvailabilityStatus.UNAVAILABLE);
-        }
-        
-        // Lấy tất cả các bác sĩ
+        // Lấy danh sách tất cả bác sĩ
         List<Doctor> allDoctors = doctorRepository.findAll();
         
         // Map để theo dõi số lượng bác sĩ có sẵn cho mỗi khung giờ
@@ -282,12 +336,21 @@ public class AppointmentService {
             }
         }
         
-        // Lấy danh sách tất cả các lịch hẹn trong ngày (không bị hủy)
+        // Lấy danh sách tất cả các lịch hẹn trong ngày
         LocalDateTime startOfDay = date.atStartOfDay();
         LocalDateTime endOfDay = date.atTime(23, 59, 59);
         
-        List<Appointment> appointments = appointmentRepository.findByAppointmentTimeBetweenAndStatusNot(
+        // Lấy tất cả các cuộc hẹn trong ngày (không bị hủy)
+        List<Appointment> allAppointments = appointmentRepository.findByAppointmentTimeBetweenAndStatusNot(
                 startOfDay, endOfDay, AppointmentStatus.CANCELED);
+        
+        // Lọc chỉ lấy các cuộc hẹn PENDING hoặc CONFIRMED, loại bỏ COMPLETED và các trạng thái khác
+        List<Appointment> appointments = allAppointments.stream()
+                .filter(appointment -> {
+                    AppointmentStatus status = appointment.getStatus();
+                    return status == AppointmentStatus.PENDING || status == AppointmentStatus.CONFIRMED;
+                })
+                .collect(Collectors.toList());
         
         // Đếm số lượng lịch hẹn cho mỗi khung giờ
         for (Appointment appointment : appointments) {
@@ -328,5 +391,49 @@ public class AppointmentService {
         }
         
         return timeSlots;
+    }
+    
+    /**
+     * Chuyển trạng thái cuộc hẹn sang chờ thanh toán sau khi bác sĩ tạo hồ sơ bệnh án
+     */
+    @Transactional
+    public Optional<Appointment> setAppointmentWaitingPayment(Integer appointmentId, BigDecimal totalAmount) {
+        return appointmentRepository.findById(appointmentId)
+                .map(appointment -> {
+                    // Cập nhật hóa đơn
+                    appointmentInvoiceService.updateInvoiceAfterMedicalRecord(appointmentId, totalAmount);
+                    
+                    // Trả về cuộc hẹn đã cập nhật
+                    return appointmentRepository.save(appointment);
+                });
+    }
+    
+    /**
+     * Đánh dấu cuộc hẹn đã thanh toán và chuyển trạng thái sang hoàn thành
+     */
+    @Transactional
+    public Optional<Appointment> markAppointmentAsPaid(Integer appointmentId, String transactionId) {
+        return appointmentRepository.findById(appointmentId)
+                .map(appointment -> {
+                    // Cập nhật hóa đơn và trạng thái cuộc hẹn
+                    appointmentInvoiceService.markAsPaid(appointmentId, transactionId);
+                    
+                    // Trả về cuộc hẹn đã cập nhật
+                    return appointmentRepository.save(appointment);
+                });
+    }
+    
+    /**
+     * Lấy danh sách cuộc hẹn đang chờ thanh toán
+     */
+    public List<Appointment> getWaitingPaymentAppointments() {
+        return appointmentRepository.findByStatusOrderByAppointmentTimeDesc(AppointmentStatus.WAITING_PAYMENT);
+    }
+    
+    /**
+     * Lấy danh sách cuộc hẹn đang chờ thanh toán của bác sĩ
+     */
+    public List<Appointment> getWaitingPaymentAppointmentsByDoctor(Integer doctorId) {
+        return appointmentRepository.findByDoctorIdAndStatusOrderByAppointmentTimeDesc(doctorId, AppointmentStatus.WAITING_PAYMENT);
     }
 }
