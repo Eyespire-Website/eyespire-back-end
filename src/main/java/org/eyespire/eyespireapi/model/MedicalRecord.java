@@ -84,14 +84,13 @@ public class MedicalRecord {
     public String toString() {
         return "MedicalRecord{" +
                 "id=" + id +
-                ", appointment=" + appointment +
-                ", patient=" + patient +
-                ", doctor=" + doctor +
+                ", appointmentId=" + (appointment != null ? appointment.getId() : null) +
+                ", patientId=" + (patient != null ? patient.getId() : null) +
+                ", doctorId=" + (doctor != null ? doctor.getId() : null) +
                 ", diagnosis='" + diagnosis + '\'' +
                 ", prescription='" + prescription + '\'' +
                 ", notes='" + notes + '\'' +
                 ", recordFileUrl='" + recordFileUrl + '\'' +
-                ", recommendedProducts=" + recommendedProducts +
                 ", createdAt=" + createdAt +
                 ", updatedAt=" + updatedAt +
                 '}';

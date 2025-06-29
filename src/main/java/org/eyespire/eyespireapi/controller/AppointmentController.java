@@ -12,6 +12,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
@@ -23,7 +24,7 @@ import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/appointments")
-@CrossOrigin(origins = "http://localhost:3000")
+@CrossOrigin(origins = "http://localhost:3000", allowCredentials = "true")
 public class AppointmentController {
 
     @Autowired
@@ -73,9 +74,7 @@ public class AppointmentController {
         }
     }
 
-    /**
-     * API để lấy thông tin chi tiết của một cuộc hẹn theo ID
-     */
+    // Lấy thông tin chi tiết của một cuộc hẹn theo ID
     @GetMapping("/{id}")
     public ResponseEntity<?> getAppointmentById(@PathVariable Integer id) {
         try {
@@ -102,6 +101,7 @@ public class AppointmentController {
 
     // Cập nhật trạng thái lịch hẹn
     @PutMapping("/{id}/status")
+    @PreAuthorize("hasRole('DOCTOR')")
     public ResponseEntity<?> updateAppointmentStatus(@PathVariable Integer id, @RequestBody Map<String, String> statusUpdate) {
         try {
             String statusStr = statusUpdate.get("status");
@@ -141,6 +141,31 @@ public class AppointmentController {
         }
     }
 
+    // Cập nhật dịch vụ của lịch hẹn
+    @PutMapping("/{id}/service")
+    @PreAuthorize("hasRole('DOCTOR')")
+    public ResponseEntity<?> updateAppointmentService(@PathVariable Integer id, @RequestBody Map<String, Integer> serviceUpdate) {
+        try {
+            Integer serviceId = serviceUpdate.get("serviceId");
+            if (serviceId == null || serviceId <= 0) {
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("ID dịch vụ không hợp lệ");
+            }
+
+            Optional<Appointment> appointmentOpt = appointmentService.getAppointmentById(id);
+            if (!appointmentOpt.isPresent()) {
+                return ResponseEntity.status(HttpStatus.NOT_FOUND).body("Không tìm thấy lịch hẹn");
+            }
+
+            Optional<Appointment> updatedAppointment = appointmentService.updateAppointmentService(id, serviceId);
+            return updatedAppointment.map(appt -> ResponseEntity.ok(convertToDTO(appt)))
+                    .orElseGet(() -> ResponseEntity.notFound().build());
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Lỗi: " + e.getMessage());
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Lỗi khi cập nhật dịch vụ lịch hẹn: " + e.getMessage());
+        }
+    }
+
     @GetMapping("/available-by-date")
     public ResponseEntity<?> getAvailableTimeSlotsByDate(
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
@@ -156,7 +181,9 @@ public class AppointmentController {
     @GetMapping
     public ResponseEntity<?> getAllAppointments() {
         try {
-            List<AppointmentDTO> appointments = appointmentService.getAllAppointments().stream().map(this::convertToDTO).collect(Collectors.toList());
+            List<AppointmentDTO> appointments = appointmentService.getAllAppointments().stream()
+                    .map(this::convertToDTO)
+                    .collect(Collectors.toList());
 
             if (appointments.isEmpty()) {
                 return ResponseEntity.status(HttpStatus.NO_CONTENT).body("Không có lịch hẹn nào được tìm thấy");
@@ -199,10 +226,8 @@ public class AppointmentController {
         }
     }
 
-    /**
-     * API để chuyển trạng thái cuộc hẹn sang chờ thanh toán sau khi bác sĩ tạo hồ sơ bệnh án
-     */
     @PutMapping("/{id}/waiting-payment")
+    @PreAuthorize("hasRole('DOCTOR')")
     public ResponseEntity<?> setAppointmentWaitingPayment(
             @PathVariable Integer id,
             @RequestBody WaitingPaymentRequestDTO request) {
@@ -215,10 +240,8 @@ public class AppointmentController {
         }
     }
 
-    /**
-     * API để đánh dấu cuộc hẹn đã thanh toán và chuyển trạng thái sang hoàn thành
-     */
     @PutMapping("/{id}/mark-as-paid")
+    @PreAuthorize("hasRole('DOCTOR')")
     public ResponseEntity<?> markAppointmentAsPaid(
             @PathVariable Integer id,
             @RequestBody InvoicePaymentRequestDTO request) {
@@ -231,9 +254,6 @@ public class AppointmentController {
         }
     }
 
-    /**
-     * API để lấy danh sách cuộc hẹn đang chờ thanh toán
-     */
     @GetMapping("/waiting-payment")
     public ResponseEntity<?> getWaitingPaymentAppointments() {
         try {
@@ -244,9 +264,6 @@ public class AppointmentController {
         }
     }
 
-    /**
-     * API để lấy danh sách cuộc hẹn đang chờ thanh toán của bác sĩ
-     */
     @GetMapping("/doctor/{doctorId}/waiting-payment")
     public ResponseEntity<?> getWaitingPaymentAppointmentsByDoctor(@PathVariable Integer doctorId) {
         try {
@@ -257,9 +274,6 @@ public class AppointmentController {
         }
     }
 
-    /**
-     * API để lấy thông tin hóa đơn của cuộc hẹn
-     */
     @GetMapping("/{id}/invoice")
     public ResponseEntity<?> getAppointmentInvoice(@PathVariable Integer id) {
         try {
@@ -312,18 +326,13 @@ public class AppointmentController {
             patientDTO.setDistrict(appointment.getPatient().getDistrict());
             patientDTO.setWard(appointment.getPatient().getWard());
             patientDTO.setAddressDetail(appointment.getPatient().getAddressDetail());
-
-            // Fix lỗi copy paste: village không phải addressDetail
             patientDTO.setVillage(appointment.getPatient().getAddressDetail());
-
             patientDTO.setGender(appointment.getPatient().getGender() != null
                     ? appointment.getPatient().getGender().toString()
                     : null);
-
             patientDTO.setDateOfBirth(appointment.getPatient().getDateOfBirth() != null
                     ? appointment.getPatient().getDateOfBirth().toString()
                     : null);
-
             dto.setPatient(patientDTO);
         }
 
@@ -337,19 +346,15 @@ public class AppointmentController {
                 dto.setRemainingAmount(invoice.getRemainingAmount());
                 dto.setIsFullyPaid(invoice.getIsFullyPaid());
                 dto.setPaidAt(invoice.getPaidAt());
-                
-                // Lưu transactionId dưới dạng Integer nếu có thể parse, nếu không thì lưu null
                 try {
                     if (invoice.getTransactionId() != null && !invoice.getTransactionId().isEmpty()) {
                         dto.setPaymentId(Integer.valueOf(invoice.getTransactionId()));
                     }
                 } catch (NumberFormatException e) {
-                    // Nếu không thể parse thành Integer, để paymentId là null
                     dto.setPaymentId(null);
                 }
             }
         } catch (Exception e) {
-            // Log lỗi nhưng không làm gián đoạn quá trình chuyển đổi
             System.err.println("Lỗi khi lấy thông tin hóa đơn: " + e.getMessage());
         }
 
@@ -369,26 +374,5 @@ public class AppointmentController {
         }
 
         return dto;
-    }
-}
-
-@RestController
-@RequestMapping("/api")
-@CrossOrigin(origins = "*")
-class AvailableSlotsController {
-    
-    @Autowired
-    private AppointmentService appointmentService;
-    
-    @GetMapping("/available-slots")
-    public ResponseEntity<?> getAvailableSlotsForDate(
-            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
-        try {
-            List<DoctorTimeSlotDTO> availableSlots = appointmentService.getAvailableTimeSlotsByDate(date);
-            return ResponseEntity.ok(availableSlots);
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body("Lỗi khi lấy khung giờ trống theo ngày: " + e.getMessage());
-        }
     }
 }

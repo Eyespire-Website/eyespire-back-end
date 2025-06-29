@@ -36,11 +36,22 @@ public class MedicalRecordProduct {
         if (this == o) return true;
         if (o == null || getClass() != o.getClass()) return false;
         MedicalRecordProduct that = (MedicalRecordProduct) o;
-        return Objects.equals(id, that.id);
+        // Compare based on medicalRecord and product (using product.id for uniqueness)
+        return Objects.equals(medicalRecord, that.medicalRecord) &&
+                Objects.equals(product != null ? product.getId() : null, that.product != null ? that.product.getId() : null);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(id);
+        return Objects.hash(medicalRecord, product != null ? product.getId() : null);
+    }
+
+    @Override
+    public String toString() {
+        return "MedicalRecordProduct{" +
+                "id=" + id +
+                ", productId=" + (product != null ? product.getId() : null) +
+                ", quantity=" + quantity +
+                '}';
     }
 }

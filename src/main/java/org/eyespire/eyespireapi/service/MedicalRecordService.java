@@ -1,26 +1,15 @@
 package org.eyespire.eyespireapi.service;
 
-import org.eyespire.eyespireapi.model.Appointment;
-import org.eyespire.eyespireapi.model.Doctor;
-import org.eyespire.eyespireapi.model.MedicalRecord;
-import org.eyespire.eyespireapi.model.MedicalRecordProduct;
-import org.eyespire.eyespireapi.model.Product;
-import org.eyespire.eyespireapi.model.User;
+import org.eyespire.eyespireapi.model.*;
 import org.eyespire.eyespireapi.model.enums.ProductType;
-import org.eyespire.eyespireapi.repository.AppointmentRepository;
-import org.eyespire.eyespireapi.repository.DoctorRepository;
-import org.eyespire.eyespireapi.repository.MedicalRecordRepository;
-import org.eyespire.eyespireapi.repository.ProductRepository;
-import org.eyespire.eyespireapi.repository.UserRepository;
+import org.eyespire.eyespireapi.repository.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.math.BigDecimal;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 import java.util.stream.Collectors;
 
 @Service
@@ -75,23 +64,34 @@ public class MedicalRecordService {
 
         // Set recommended products
         if (productQuantities != null && !productQuantities.isEmpty()) {
-            Set<MedicalRecordProduct> recommendedProducts = productQuantities.stream()
-                    .map(pq -> {
-                        Integer productId = pq.get("productId");
-                        Integer quantity = pq.get("quantity");
-                        Product product = productRepository.findById(productId)
-                                .orElseThrow(() -> new IllegalArgumentException("Thuốc không tồn tại với ID: " + productId));
-                        if (product.getType() != ProductType.MEDICINE) {
-                            throw new IllegalArgumentException("Chỉ có thể chọn thuốc: " + productId);
-                        }
-                        MedicalRecordProduct mrp = new MedicalRecordProduct();
-                        mrp.setMedicalRecord(record);
-                        mrp.setProduct(product);
-                        mrp.setQuantity(quantity);
-                        return mrp;
-                    })
-                    .collect(Collectors.toSet());
+            List<Integer> productIds = productQuantities.stream()
+                    .map(pq -> pq.get("productId"))
+                    .filter(id -> id != null && id > 0)
+                    .distinct()
+                    .collect(Collectors.toList());
+            List<Product> products = productRepository.findAllById(productIds);
+            Map<Integer, Product> productMap = products.stream()
+                    .collect(Collectors.toMap(Product::getId, p -> p));
+
+            Set<MedicalRecordProduct> recommendedProducts = new HashSet<>();
+            for (Map<String, Integer> pq : productQuantities) {
+                Integer productId = pq.get("productId");
+                Integer quantity = pq.get("quantity");
+                if (productId != null && quantity != null && productId > 0 && quantity > 0 && productMap.containsKey(productId)) {
+                    Product product = productMap.get(productId);
+                    if (product.getType() != ProductType.MEDICINE) {
+                        throw new IllegalArgumentException("Chỉ có thể chọn thuốc: " + productId);
+                    }
+                    MedicalRecordProduct mrp = new MedicalRecordProduct();
+                    mrp.setMedicalRecord(record);
+                    mrp.setProduct(product);
+                    mrp.setQuantity(quantity);
+                    recommendedProducts.add(mrp);
+                }
+            }
             record.setRecommendedProducts(recommendedProducts);
+        } else {
+            record.setRecommendedProducts(new HashSet<>());
         }
 
         // Set file URL
@@ -101,30 +101,202 @@ public class MedicalRecordService {
         }
 
         MedicalRecord savedRecord = medicalRecordRepository.save(record);
-        
-        // Nếu có cuộc hẹn, cập nhật hóa đơn và trạng thái cuộc hẹn sang WAITING_PAYMENT
+
+        // Update invoice if appointment exists
         if (appointmentId != null) {
-            // Tính tổng chi phí dựa trên các sản phẩm được kê
             BigDecimal totalAmount = BigDecimal.ZERO;
             if (productQuantities != null && !productQuantities.isEmpty()) {
                 totalAmount = productQuantities.stream()
-                    .map(pq -> {
-                        Integer productId = pq.get("productId");
-                        Integer quantity = pq.get("quantity");
-                        Product product = productRepository.findById(productId).orElse(null);
-                        if (product != null) {
-                            return product.getPrice().multiply(new BigDecimal(quantity));
-                        }
-                        return BigDecimal.ZERO;
-                    })
-                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+                        .map(pq -> {
+                            Integer productId = pq.get("productId");
+                            Integer quantity = pq.get("quantity");
+                            Product product = productRepository.findById(productId).orElse(null);
+                            if (product != null) {
+                                return product.getPrice().multiply(new BigDecimal(quantity));
+                            }
+                            return BigDecimal.ZERO;
+                        })
+                        .reduce(BigDecimal.ZERO, BigDecimal::add);
             }
-            
-            // Cập nhật hóa đơn và trạng thái cuộc hẹn
             appointmentInvoiceService.updateInvoiceAfterMedicalRecord(appointmentId, totalAmount);
         }
-        
+
         return savedRecord;
+    }
+
+    @Transactional
+    public MedicalRecord updateMedicalRecord(Integer recordId, String diagnosis, String notes,
+                                             List<Map<String, Integer>> productQuantities, MultipartFile[] files,
+                                             List<String> filesToDelete) {
+        try {
+            System.out.println("Updating medical record ID: " + recordId + ", diagnosis: " + diagnosis +
+                    ", notes: " + notes + ", productQuantities: " + (productQuantities != null ? productQuantities : "none") +
+                    ", files: " + (files != null ? Arrays.stream(files).map(MultipartFile::getOriginalFilename).collect(Collectors.toList()) : "none") +
+                    ", filesToDelete: " + (filesToDelete != null ? filesToDelete : "none"));
+
+            MedicalRecord record = medicalRecordRepository.findById(recordId)
+                    .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy hồ sơ điều trị với ID: " + recordId));
+
+            // Update diagnosis: Allow empty strings and set to "Chưa cập nhật" if empty
+            if (diagnosis != null) {
+                String trimmedDiagnosis = diagnosis.trim();
+                record.setDiagnosis(trimmedDiagnosis.isEmpty() ? "Chưa cập nhật" : trimmedDiagnosis);
+            }
+
+            // Update notes: Allow empty strings
+            if (notes != null) {
+                record.setNotes(notes.trim());
+            }
+
+            // Update recommended products
+            if (productQuantities != null) {
+                // Load existing MedicalRecordProducts to ensure they are managed
+                Set<MedicalRecordProduct> existingProducts = record.getRecommendedProducts();
+                if (existingProducts == null) {
+                    existingProducts = new HashSet<>();
+                    record.setRecommendedProducts(existingProducts);
+                }
+
+                // Create a map of existing products by productId for easy lookup
+                Map<Integer, MedicalRecordProduct> existingProductMap = existingProducts.stream()
+                        .filter(mrp -> mrp.getProduct() != null && mrp.getProduct().getId() != null)
+                        .collect(Collectors.toMap(
+                                mrp -> mrp.getProduct().getId(),
+                                mrp -> mrp,
+                                (mrp1, mrp2) -> mrp1 // In case of duplicates, keep the first
+                        ));
+
+                // Fetch all required products in one query
+                List<Integer> productIds = productQuantities.stream()
+                        .map(pq -> pq.get("productId"))
+                        .filter(id -> id != null && id > 0)
+                        .distinct()
+                        .collect(Collectors.toList());
+                List<Product> products = productRepository.findAllById(productIds);
+                Map<Integer, Product> productMap = products.stream()
+                        .collect(Collectors.toMap(Product::getId, p -> p));
+
+                // Create a set of new product IDs from the input
+                Set<Integer> newProductIds = productQuantities.stream()
+                        .map(pq -> pq.get("productId"))
+                        .filter(id -> id != null && id > 0)
+                        .collect(Collectors.toSet());
+
+                // Remove products that are no longer in the input (orphan removal will handle deletion)
+                existingProducts.removeIf(mrp -> {
+                    Integer productId = mrp.getProduct() != null ? mrp.getProduct().getId() : null;
+                    return productId != null && !newProductIds.contains(productId);
+                });
+
+                // Update or add products
+                for (Map<String, Integer> pq : productQuantities) {
+                    Integer productId = pq.get("productId");
+                    Integer quantity = pq.get("quantity");
+                    if (productId == null || quantity == null || productId <= 0 || quantity <= 0) {
+                        System.err.println("Invalid product quantity: productId=" + productId + ", quantity=" + quantity);
+                        continue;
+                    }
+                    Product product = productMap.get(productId);
+                    if (product == null) {
+                        System.err.println("Product not found: productId=" + productId);
+                        continue;
+                    }
+                    if (product.getType() != ProductType.MEDICINE) {
+                        throw new IllegalArgumentException("Chỉ có thể chọn thuốc: " + productId);
+                    }
+
+                    // Check if the product already exists in the collection
+                    MedicalRecordProduct mrp = existingProductMap.get(productId);
+                    if (mrp != null) {
+                        // Update existing product quantity
+                        mrp.setQuantity(quantity);
+                    } else {
+                        // Add new product
+                        MedicalRecordProduct newMrp = new MedicalRecordProduct();
+                        newMrp.setMedicalRecord(record);
+                        newMrp.setProduct(product);
+                        newMrp.setQuantity(quantity);
+                        existingProducts.add(newMrp);
+                    }
+                }
+            } else {
+                // If productQuantities is null or empty, clear the collection
+                if (record.getRecommendedProducts() != null) {
+                    record.getRecommendedProducts().clear();
+                }
+            }
+
+            // Update files
+            if (files != null && files.length > 0) {
+                try {
+                    String newFileUrl = fileStorageService.storeFiles(files);
+                    String existingFileUrl = record.getRecordFileUrl();
+                    if (existingFileUrl != null && !existingFileUrl.isEmpty()) {
+                        record.setRecordFileUrl(existingFileUrl + ";" + newFileUrl);
+                    } else {
+                        record.setRecordFileUrl(newFileUrl);
+                    }
+                } catch (Exception e) {
+                    System.err.println("Error storing files: " + e.getMessage());
+                    e.printStackTrace();
+                    throw new RuntimeException("Failed to store files: " + e.getMessage());
+                }
+            }
+
+            // Delete files
+            if (filesToDelete != null && !filesToDelete.isEmpty()) {
+                String currentFileUrl = record.getRecordFileUrl();
+                if (currentFileUrl != null && !currentFileUrl.isEmpty()) {
+                    List<String> currentFiles = Arrays.asList(currentFileUrl.split(";"));
+                    List<String> updatedFiles = currentFiles.stream()
+                            .filter(url -> {
+                                String normalizedUrl = url.startsWith("/uploads/") ? url : "/uploads/" + url;
+                                return !filesToDelete.contains(normalizedUrl) && !filesToDelete.contains(url);
+                            })
+                            .collect(Collectors.toList());
+                    String updatedFileUrl = String.join(";", updatedFiles);
+                    record.setRecordFileUrl(updatedFileUrl.isEmpty() ? null : updatedFileUrl);
+                    for (String fileUrl : filesToDelete) {
+                        try {
+                            String normalizedFileUrl = fileUrl.startsWith("/uploads/") ? fileUrl : "/uploads/" + fileUrl;
+                            fileStorageService.deleteFile(normalizedFileUrl);
+                        } catch (Exception e) {
+                            System.err.println("Error deleting file: " + fileUrl + ", error: " + e.getMessage());
+                            e.printStackTrace();
+                        }
+                    }
+                }
+            }
+
+            // Save the record before updating the invoice to avoid premature flush
+            MedicalRecord savedRecord = medicalRecordRepository.save(record);
+
+            // Update invoice if appointment exists
+            if (record.getAppointment() != null) {
+                BigDecimal totalAmount = BigDecimal.ZERO;
+                if (productQuantities != null && !productQuantities.isEmpty()) {
+                    totalAmount = productQuantities.stream()
+                            .map(pq -> {
+                                Integer productId = pq.get("productId");
+                                Integer quantity = pq.get("quantity");
+                                Product product = productRepository.findById(productId).orElse(null);
+                                if (product != null) {
+                                    return product.getPrice().multiply(new BigDecimal(quantity));
+                                }
+                                return BigDecimal.ZERO;
+                            })
+                            .reduce(BigDecimal.ZERO, BigDecimal::add);
+                }
+                appointmentInvoiceService.updateInvoiceAfterMedicalRecord(record.getAppointment().getId(), totalAmount);
+            }
+
+            System.out.println("Saved medical record: " + savedRecord);
+            return savedRecord;
+        } catch (Exception e) {
+            System.err.println("Error updating medical record ID: " + recordId + ", message: " + e.getMessage());
+            e.printStackTrace();
+            throw new RuntimeException("Failed to update medical record: " + e.getMessage());
+        }
     }
 
     public List<Product> getProductsMedicine() {
@@ -132,42 +304,26 @@ public class MedicalRecordService {
     }
 
     public List<MedicalRecord> getDoctorMedicalRecordsByUserId(Integer userId) {
-        // Map userId to doctorId
         Doctor doctor = doctorRepository.findByUserId(userId)
                 .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy bác sĩ với userId: " + userId));
-        System.out.println("Mapped userId " + userId + " to doctorId: " + doctor.getId());
-        List<MedicalRecord> records = medicalRecordRepository.findByDoctorId(doctor.getId());
-        System.out.println("Found " + records.size() + " records for doctorId: " + doctor.getId());
-        return records;
+        return medicalRecordRepository.findByDoctorId(doctor.getId());
     }
 
     public List<MedicalRecord> getPatientMedicalRecordsByUserId(Integer userId) {
-        // Validate userId
         User patient = userRepository.findById(userId)
                 .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy bệnh nhân với userId: " + userId));
-        System.out.println("Looking up medical records for patientId: " + userId);
-        
-        List<MedicalRecord> records = medicalRecordRepository.findByPatientId(userId);
-        System.out.println("Found " + records.size() + " records for patientId: " + userId);
-        return records;
+        return medicalRecordRepository.findByPatientId(userId);
     }
 
-    public java.util.Optional<MedicalRecord> getMedicalRecordById(Integer recordId) {
-        System.out.println("Looking up medical record with ID: " + recordId);
+    public Optional<MedicalRecord> getMedicalRecordById(Integer recordId) {
         return medicalRecordRepository.findById(recordId);
     }
-    
+
     public boolean existsByAppointmentId(Integer appointmentId) {
         return medicalRecordRepository.existsByAppointmentId(appointmentId);
     }
-    
-    /**
-     * Lấy hồ sơ y tế theo ID cuộc hẹn
-     * @param appointmentId ID của cuộc hẹn
-     * @return Hồ sơ y tế nếu tồn tại
-     */
-    public java.util.Optional<MedicalRecord> getMedicalRecordByAppointmentId(Integer appointmentId) {
-        System.out.println("Looking up medical record for appointmentId: " + appointmentId);
+
+    public Optional<MedicalRecord> getMedicalRecordByAppointmentId(Integer appointmentId) {
         return medicalRecordRepository.findByAppointmentId(appointmentId);
     }
 }

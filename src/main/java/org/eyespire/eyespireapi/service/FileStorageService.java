@@ -25,27 +25,39 @@ public class FileStorageService {
         }
     }
 
+    /**
+     * Lưu trữ nhiều file và trả về chuỗi các URL tương đối, phân tách bằng dấu chấm phẩy
+     * @param files Mảng các file cần lưu trữ
+     * @return Chuỗi các URL tương đối, phân tách bằng dấu chấm phẩy
+     */
     public String storeFiles(MultipartFile[] files) {
+        if (files == null || files.length == 0) {
+            return "";
+        }
         try {
             StringBuilder fileUrls = new StringBuilder();
             for (MultipartFile file : files) {
                 if (!file.isEmpty()) {
                     String fileName = UUID.randomUUID() + "_" + file.getOriginalFilename();
                     Path targetLocation = fileStorageLocation.resolve(fileName);
-                    Files.copy(file.getInputStream(), targetLocation);
-                    fileUrls.append(targetLocation.toString()).append(";");
+                    Files.copy(file.getInputStream(), targetLocation, StandardCopyOption.REPLACE_EXISTING);
+                    fileUrls.append("/uploads/").append(fileName).append(";");
                 }
+            }
+            // Xóa dấu chấm phẩy cuối nếu có
+            if (fileUrls.length() > 0) {
+                fileUrls.deleteCharAt(fileUrls.length() - 1);
             }
             return fileUrls.toString();
         } catch (IOException ex) {
-            throw new RuntimeException("Could not store file", ex);
+            throw new RuntimeException("Could not store files", ex);
         }
     }
-    
+
     /**
      * Lưu trữ một file ảnh duy nhất và trả về URL tương đối
      * @param file File ảnh cần lưu trữ
-     * @param subDirectory Thư mục con để lưu trữ (ví dụ: "services", "doctors") - không còn sử dụng
+     * @param subDirectory Thư mục con để lưu trữ (không còn sử dụng)
      * @return URL tương đối của file đã lưu
      */
     public String storeImage(MultipartFile file, String subDirectory) {
@@ -53,25 +65,53 @@ public class FileStorageService {
             if (file.isEmpty()) {
                 throw new RuntimeException("Failed to store empty file");
             }
-            
-            // Tạo tên file duy nhất
+
             String originalFilename = file.getOriginalFilename();
             String extension = "";
             if (originalFilename != null && originalFilename.contains(".")) {
                 extension = originalFilename.substring(originalFilename.lastIndexOf("."));
             }
             String fileName = UUID.randomUUID().toString() + extension;
-            
-            // Đường dẫn đầy đủ để lưu file - lưu trực tiếp vào thư mục gốc
+
             Path targetLocation = fileStorageLocation.resolve(fileName);
-            
-            // Lưu file
             Files.copy(file.getInputStream(), targetLocation, StandardCopyOption.REPLACE_EXISTING);
-            
-            // Trả về URL tương đối - không sử dụng thư mục con
+
             return "/uploads/" + fileName;
         } catch (IOException ex) {
             throw new RuntimeException("Could not store file " + file.getOriginalFilename(), ex);
         }
+    }
+
+    /**
+     * Xóa file dựa trên URL tương đối
+     * @param fileUrl URL tương đối của file cần xóa (ví dụ: /uploads/filename)
+     */
+    public void deleteFile(String fileUrl) {
+        if (fileUrl == null || fileUrl.isEmpty()) {
+            return;
+        }
+        try {
+            // Loại bỏ tiền tố "/uploads/" để lấy tên file
+            String fileName = fileUrl.startsWith("/uploads/") ? fileUrl.substring("/uploads/".length()) : fileUrl;
+            Path filePath = fileStorageLocation.resolve(fileName).normalize();
+            // Đảm bảo file nằm trong thư mục lưu trữ để tránh xóa file ngoài ý muốn
+            if (filePath.startsWith(fileStorageLocation)) {
+                Files.deleteIfExists(filePath);
+            } else {
+                throw new SecurityException("Attempt to delete file outside of storage directory: " + filePath);
+            }
+        } catch (IOException ex) {
+            throw new RuntimeException("Could not delete file: " + fileUrl, ex);
+        } catch (SecurityException ex) {
+            throw new RuntimeException("Security violation while deleting file: " + fileUrl, ex);
+        }
+    }
+
+    /**
+     * Lấy đường dẫn thư mục lưu trữ file
+     * @return Đường dẫn thư mục lưu trữ
+     */
+    public Path getFileStorageLocation() {
+        return fileStorageLocation;
     }
 }

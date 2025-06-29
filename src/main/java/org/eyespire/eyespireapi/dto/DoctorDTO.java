@@ -11,7 +11,6 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 public class DoctorDTO {
-    
     private Integer id;
     private String name;
     private String specialization;
@@ -21,5 +20,4 @@ public class DoctorDTO {
     private String description;
     private Integer userId;
     private Integer specialtyId;
-    
 }
