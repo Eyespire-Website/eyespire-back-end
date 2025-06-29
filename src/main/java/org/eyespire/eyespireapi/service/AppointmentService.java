@@ -210,6 +210,20 @@ public class AppointmentService {
                     return appointmentRepository.save(appointment);
                 });
     }
+    @Transactional
+    public Optional<Appointment> updateAppointmentService(Integer appointmentId, Integer serviceId) {
+        Optional<Appointment> appointment = appointmentRepository.findById(appointmentId);
+        if (!appointment.isPresent()) {
+            throw new IllegalArgumentException("Cuộc hẹn không tồn tại!");
+        }
+        Optional<MedicalService> service = medicalServiceRepository.findById(serviceId);
+        if (!service.isPresent()) {
+            throw new IllegalArgumentException("Dịch vụ không tồn tại!");
+        }
+        Appointment appt = appointment.get();
+        appt.setService(service.get());
+        return Optional.of(appointmentRepository.save(appt));
+    }
     
     /**
      * Hủy lịch hẹn
@@ -392,6 +406,7 @@ public class AppointmentService {
         
         return timeSlots;
     }
+
     
     /**
      * Chuyển trạng thái cuộc hẹn sang chờ thanh toán sau khi bác sĩ tạo hồ sơ bệnh án

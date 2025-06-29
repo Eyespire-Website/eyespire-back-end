@@ -296,4 +296,6 @@ public class DoctorService {
         return doctorOpt.map(Doctor::getId).orElseThrow(() ->
                 new IllegalArgumentException("Không tìm thấy bác sĩ liên kết với userId: " + userId));
     }
+
+
 }
