@@ -5,6 +5,7 @@ import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import lombok.ToString;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -14,6 +15,7 @@ import java.util.List;
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
+@ToString(exclude = {"user", "specialty", "services", "availabilities", "appointments"})
 public class Doctor {
     
     @Id
@@ -66,23 +68,4 @@ public class Doctor {
     @OneToMany(mappedBy = "doctor")
     @JsonIgnore
     private List<Appointment> appointments = new ArrayList<>();
-
-    @Override
-    public String toString() {
-        return "Doctor{" +
-                "id=" + id +
-                ", name='" + name + '\'' +
-                ", specialization='" + specialization + '\'' +
-                ", qualification='" + qualification + '\'' +
-                ", experience='" + experience + '\'' +
-                ", imageUrl='" + imageUrl + '\'' +
-                ", description='" + description + '\'' +
-                ", userId=" + userId +
-                ", user=" + user +
-                ", specialty=" + specialty +
-                ", services=" + services +
-                ", availabilities=" + availabilities +
-                ", appointments=" + appointments +
-                '}';
-    }
 }
