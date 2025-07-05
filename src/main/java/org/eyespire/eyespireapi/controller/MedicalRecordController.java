@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -38,12 +39,12 @@ public class MedicalRecordController {
             @RequestParam("diagnosis") String diagnosis,
             @RequestParam(value = "notes", required = false) String notes,
             @RequestParam(value = "appointmentId", required = false) Integer appointmentId,
-            @RequestParam(value = "serviceId", required = false) Integer serviceId,
+            @RequestParam(value = "serviceIds", required = false) String serviceIdsJson,
             @RequestParam(value = "productQuantities", required = false) String productQuantitiesJson,
             @RequestParam(value = "files", required = false) MultipartFile[] files) {
         try {
             System.out.println("Received POST /medical-records: patientId=" + patientId + ", doctorId=" + doctorId +
-                    ", diagnosis=" + diagnosis + ", appointmentId=" + appointmentId + ", serviceId=" + serviceId +
+                    ", diagnosis=" + diagnosis + ", appointmentId=" + appointmentId + ", serviceIdsJson=" + serviceIdsJson +
                     ", productQuantitiesJson=" + productQuantitiesJson +
                     ", files=" + (files != null ? Arrays.stream(files).map(MultipartFile::getOriginalFilename).collect(Collectors.toList()) : "none"));
 
@@ -64,6 +65,24 @@ public class MedicalRecordController {
                         .orElseThrow(() -> new IllegalArgumentException("Cuộc hẹn không tồn tại!"));
                 if (appointment.getStatus() != AppointmentStatus.CONFIRMED) {
                     return ResponseEntity.badRequest().body(new ErrorResponse("Cuộc hẹn chưa được xác nhận, không thể tạo hồ sơ!"));
+                }
+            }
+
+            List<Integer> serviceIds = null;
+            if (serviceIdsJson != null && !serviceIdsJson.isEmpty()) {
+                try {
+                    ObjectMapper mapper = new ObjectMapper();
+                    serviceIds = mapper.readValue(serviceIdsJson,
+                            mapper.getTypeFactory().constructCollectionType(List.class, Integer.class));
+                    for (Integer id : serviceIds) {
+                        if (id == null || id <= 0) {
+                            return ResponseEntity.badRequest().body(new ErrorResponse("Danh sách serviceIds chứa ID không hợp lệ!"));
+                        }
+                    }
+                } catch (Exception e) {
+                    System.err.println("Error parsing serviceIdsJson: " + e.getMessage());
+                    e.printStackTrace();
+                    return ResponseEntity.badRequest().body(new ErrorResponse("Dữ liệu serviceIds không đúng định dạng JSON: " + e.getMessage()));
                 }
             }
 
@@ -104,8 +123,8 @@ public class MedicalRecordController {
 
             MedicalRecord medicalRecord = medicalRecordService.createMedicalRecord(
                     patientId, doctorId, diagnosis, notes, appointmentId, productQuantities, files);
-            if (appointmentId != null && serviceId != null) {
-                appointmentService.updateAppointmentService(appointmentId, serviceId);
+            if (appointmentId != null && serviceIds != null && !serviceIds.isEmpty()) {
+                appointmentService.updateAppointmentServices(appointmentId, serviceIds);
             }
             return new ResponseEntity<>(medicalRecord, HttpStatus.CREATED);
         } catch (IllegalArgumentException e) {
@@ -117,6 +136,112 @@ public class MedicalRecordController {
             e.printStackTrace();
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(new ErrorResponse("Lỗi server khi tạo hồ sơ bệnh án: " + e.getMessage()));
+        }
+    }
+
+    @PutMapping("/medical-records/{recordId}")
+    @PreAuthorize("hasRole('DOCTOR')")
+    public ResponseEntity<?> updateMedicalRecord(
+            @PathVariable Integer recordId,
+            @RequestParam(value = "diagnosis", required = false) String diagnosis,
+            @RequestParam(value = "serviceIds", required = false) String serviceIdsJson,
+            @RequestParam(value = "notes", required = false) String notes,
+            @RequestParam(value = "productQuantities", required = false) String productQuantitiesJson,
+            @RequestParam(value = "files", required = false) MultipartFile[] files,
+            @RequestParam(value = "filesToDelete", required = false) String filesToDeleteJson) {
+        try {
+            System.out.println("Received PUT /medical-records/" + recordId + ":");
+            System.out.println("Diagnosis: " + diagnosis);
+            System.out.println("ServiceIdsJson: " + serviceIdsJson);
+            System.out.println("Notes: " + notes);
+            System.out.println("ProductQuantitiesJson: " + productQuantitiesJson);
+            System.out.println("Files: " + (files != null ? Arrays.stream(files).map(MultipartFile::getOriginalFilename).collect(Collectors.toList()) : "none"));
+            System.out.println("FilesToDeleteJson: " + filesToDeleteJson);
+
+            if (recordId == null || recordId <= 0) {
+                return ResponseEntity.badRequest().body(new ErrorResponse("ID hồ sơ không hợp lệ!"));
+            }
+
+            List<Integer> serviceIds = null;
+            if (serviceIdsJson != null && !serviceIdsJson.isEmpty()) {
+                try {
+                    ObjectMapper mapper = new ObjectMapper();
+                    serviceIds = mapper.readValue(serviceIdsJson,
+                            mapper.getTypeFactory().constructCollectionType(List.class, Integer.class));
+                    for (Integer id : serviceIds) {
+                        if (id == null || id <= 0) {
+                            return ResponseEntity.badRequest().body(new ErrorResponse("Danh sách serviceIds chứa ID không hợp lệ!"));
+                        }
+                    }
+                } catch (Exception e) {
+                    System.err.println("Error parsing serviceIdsJson: " + e.getMessage());
+                    e.printStackTrace();
+                    return ResponseEntity.badRequest().body(new ErrorResponse("Dữ liệu serviceIds không đúng định dạng JSON: " + e.getMessage()));
+                }
+            }
+
+            List<Map<String, Integer>> productQuantities = null;
+            if (productQuantitiesJson != null && !productQuantitiesJson.isEmpty()) {
+                try {
+                    ObjectMapper mapper = new ObjectMapper();
+                    productQuantities = mapper.readValue(productQuantitiesJson,
+                            mapper.getTypeFactory().constructCollectionType(List.class, Map.class));
+                    for (Map<String, Integer> pq : productQuantities) {
+                        if (!pq.containsKey("productId") || !pq.containsKey("quantity") ||
+                                pq.get("productId") == null || pq.get("productId") <= 0 ||
+                                pq.get("quantity") == null || pq.get("quantity") <= 0) {
+                            return ResponseEntity.badRequest().body(new ErrorResponse("Dữ liệu productQuantities không hợp lệ: " + pq));
+                        }
+                    }
+                } catch (Exception e) {
+                    System.err.println("Error parsing productQuantitiesJson: " + e.getMessage());
+                    e.printStackTrace();
+                    return ResponseEntity.badRequest().body(new ErrorResponse("Dữ liệu productQuantities không đúng định dạng JSON: " + e.getMessage()));
+                }
+            }
+
+            List<String> filesToDelete = null;
+            if (filesToDeleteJson != null && !filesToDeleteJson.isEmpty()) {
+                try {
+                    ObjectMapper mapper = new ObjectMapper();
+                    filesToDelete = mapper.readValue(filesToDeleteJson,
+                            mapper.getTypeFactory().constructCollectionType(List.class, String.class));
+                } catch (Exception e) {
+                    System.err.println("Error parsing filesToDeleteJson: " + e.getMessage());
+                    e.printStackTrace();
+                    return ResponseEntity.badRequest().body(new ErrorResponse("Dữ liệu filesToDelete không đúng định dạng JSON: " + e.getMessage()));
+                }
+            }
+
+            if (files != null) {
+                for (MultipartFile file : files) {
+                    if (file.isEmpty()) {
+                        return ResponseEntity.badRequest().body(new ErrorResponse("File rỗng: " + file.getOriginalFilename()));
+                    }
+                    if (file.getSize() > 5 * 1024 * 1024) {
+                        return ResponseEntity.badRequest().body(new ErrorResponse("File quá lớn: " + file.getOriginalFilename()));
+                    }
+                    String contentType = file.getContentType();
+                    if (!Arrays.asList("image/jpeg", "image/png", "application/pdf").contains(contentType)) {
+                        return ResponseEntity.badRequest().body(new ErrorResponse("Định dạng file không được hỗ trợ: " + file.getOriginalFilename()));
+                    }
+                }
+            }
+
+            MedicalRecord updatedRecord = medicalRecordService.updateMedicalRecord(recordId, diagnosis, notes, productQuantities, files, filesToDelete);
+            if (serviceIds != null && !serviceIds.isEmpty() && updatedRecord.getAppointment() != null) {
+                appointmentService.updateAppointmentServices(updatedRecord.getAppointment().getId(), serviceIds);
+            }
+            return new ResponseEntity<>(updatedRecord, HttpStatus.OK);
+        } catch (IllegalArgumentException e) {
+            System.err.println("IllegalArgumentException in updateMedicalRecord: " + e.getMessage());
+            e.printStackTrace();
+            return ResponseEntity.badRequest().body(new ErrorResponse(e.getMessage()));
+        } catch (Exception e) {
+            System.err.println("Error in updateMedicalRecord: " + e.getMessage());
+            e.printStackTrace();
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(new ErrorResponse("Lỗi server khi cập nhật hồ sơ bệnh án: " + e.getMessage()));
         }
     }
 
@@ -282,94 +407,6 @@ public class MedicalRecordController {
             e.printStackTrace();
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(new ErrorResponse("Lỗi server khi lấy thông tin thuốc: " + e.getMessage()));
-        }
-    }
-
-    @PutMapping("/medical-records/{recordId}")
-    @PreAuthorize("hasRole('DOCTOR')")
-    public ResponseEntity<?> updateMedicalRecord(
-            @PathVariable Integer recordId,
-            @RequestParam(value = "diagnosis", required = false) String diagnosis,
-            @RequestParam(value = "serviceId", required = false) Integer serviceId,
-            @RequestParam(value = "notes", required = false) String notes,
-            @RequestParam(value = "productQuantities", required = false) String productQuantitiesJson,
-            @RequestParam(value = "files", required = false) MultipartFile[] files,
-            @RequestParam(value = "filesToDelete", required = false) String filesToDeleteJson) {
-        try {
-            System.out.println("Received PUT /medical-records/" + recordId + ":");
-            System.out.println("Diagnosis: " + diagnosis);
-            System.out.println("ServiceId: " + serviceId);
-            System.out.println("Notes: " + notes);
-            System.out.println("ProductQuantitiesJson: " + productQuantitiesJson);
-            System.out.println("Files: " + (files != null ? Arrays.stream(files).map(MultipartFile::getOriginalFilename).collect(Collectors.toList()) : "none"));
-            System.out.println("FilesToDeleteJson: " + filesToDeleteJson);
-
-            if (recordId == null || recordId <= 0) {
-                return ResponseEntity.badRequest().body(new ErrorResponse("ID hồ sơ không hợp lệ!"));
-            }
-
-            List<Map<String, Integer>> productQuantities = null;
-            if (productQuantitiesJson != null && !productQuantitiesJson.isEmpty()) {
-                try {
-                    ObjectMapper mapper = new ObjectMapper();
-                    productQuantities = mapper.readValue(productQuantitiesJson,
-                            mapper.getTypeFactory().constructCollectionType(List.class, Map.class));
-                    for (Map<String, Integer> pq : productQuantities) {
-                        if (!pq.containsKey("productId") || !pq.containsKey("quantity") ||
-                                pq.get("productId") == null || pq.get("productId") <= 0 ||
-                                pq.get("quantity") == null || pq.get("quantity") <= 0) {
-                            return ResponseEntity.badRequest().body(new ErrorResponse("Dữ liệu productQuantities không hợp lệ: " + pq));
-                        }
-                    }
-                } catch (Exception e) {
-                    System.err.println("Error parsing productQuantitiesJson: " + e.getMessage());
-                    e.printStackTrace();
-                    return ResponseEntity.badRequest().body(new ErrorResponse("Dữ liệu productQuantities không đúng định dạng JSON: " + e.getMessage()));
-                }
-            }
-
-            List<String> filesToDelete = null;
-            if (filesToDeleteJson != null && !filesToDeleteJson.isEmpty()) {
-                try {
-                    ObjectMapper mapper = new ObjectMapper();
-                    filesToDelete = mapper.readValue(filesToDeleteJson,
-                            mapper.getTypeFactory().constructCollectionType(List.class, String.class));
-                } catch (Exception e) {
-                    System.err.println("Error parsing filesToDeleteJson: " + e.getMessage());
-                    e.printStackTrace();
-                    return ResponseEntity.badRequest().body(new ErrorResponse("Dữ liệu filesToDelete không đúng định dạng JSON: " + e.getMessage()));
-                }
-            }
-
-            if (files != null) {
-                for (MultipartFile file : files) {
-                    if (file.isEmpty()) {
-                        return ResponseEntity.badRequest().body(new ErrorResponse("File rỗng: " + file.getOriginalFilename()));
-                    }
-                    if (file.getSize() > 5 * 1024 * 1024) {
-                        return ResponseEntity.badRequest().body(new ErrorResponse("File quá lớn: " + file.getOriginalFilename()));
-                    }
-                    String contentType = file.getContentType();
-                    if (!Arrays.asList("image/jpeg", "image/png", "application/pdf").contains(contentType)) {
-                        return ResponseEntity.badRequest().body(new ErrorResponse("Định dạng file không được hỗ trợ: " + file.getOriginalFilename()));
-                    }
-                }
-            }
-
-            MedicalRecord updatedRecord = medicalRecordService.updateMedicalRecord(recordId, diagnosis, notes, productQuantities, files, filesToDelete);
-            if (serviceId != null && updatedRecord.getAppointment() != null) {
-                appointmentService.updateAppointmentService(updatedRecord.getAppointment().getId(), serviceId);
-            }
-            return new ResponseEntity<>(updatedRecord, HttpStatus.OK);
-        } catch (IllegalArgumentException e) {
-            System.err.println("IllegalArgumentException in updateMedicalRecord: " + e.getMessage());
-            e.printStackTrace();
-            return ResponseEntity.badRequest().body(new ErrorResponse(e.getMessage()));
-        } catch (Exception e) {
-            System.err.println("Error in updateMedicalRecord: " + e.getMessage());
-            e.printStackTrace();
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(new ErrorResponse("Lỗi server khi cập nhật hồ sơ bệnh án: " + e.getMessage()));
         }
     }
 
