@@ -62,6 +62,12 @@ public class User {
     @Column(name = "address_detail", columnDefinition = "nvarchar(255)")
     private String addressDetail;
     
+    @Column(length = 20, columnDefinition = "nvarchar(20)")
+    private String status = "active"; // Mặc định là active
+    
+    @Column(name = "last_login")
+    private LocalDateTime lastLogin;
+    
     @Column(name = "created_at")
     private LocalDateTime createdAt;
     
@@ -75,6 +81,9 @@ public class User {
     protected void onCreate() {
         createdAt = LocalDateTime.now();
         updatedAt = LocalDateTime.now();
+        if (status == null) {
+            status = "active";
+        }
     }
     
     @PreUpdate
@@ -99,6 +108,8 @@ public class User {
                 ", district='" + district + '\'' +
                 ", ward='" + ward + '\'' +
                 ", addressDetail='" + addressDetail + '\'' +
+                ", status='" + status + '\'' +
+                ", lastLogin=" + lastLogin +
                 ", createdAt=" + createdAt +
                 ", updatedAt=" + updatedAt +
                 ", isGoogleAccount=" + isGoogleAccount +

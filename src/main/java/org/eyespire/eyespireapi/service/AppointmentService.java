@@ -325,7 +325,32 @@ public class AppointmentService {
     }
 
     /**
+
+     * Tạo danh sách khung giờ mặc định từ 8h đến 16h
+     */
+    private List<DoctorTimeSlotDTO> createDefaultTimeSlots() {
+        List<DoctorTimeSlotDTO> timeSlots = new ArrayList<>();
+        
+        // Tạo các khung giờ từ 8h đến 16h, mỗi khung giờ cách nhau 1 tiếng
+        for (int hour = 8; hour <= 16; hour++) {
+            LocalTime startTime = LocalTime.of(hour, 0);
+            LocalTime endTime = LocalTime.of(hour + 1, 0);
+            
+            // Mặc định tất cả các slot là UNAVAILABLE cho đến khi được xác nhận có bác sĩ làm việc
+            DoctorTimeSlotDTO slot = new DoctorTimeSlotDTO(startTime, endTime, AvailabilityStatus.UNAVAILABLE);
+            slot.setAvailableCount(0); // Mặc định không có bác sĩ nào
+            timeSlots.add(slot);
+        }
+        
+        return timeSlots;
+    }
+
+    /**
+     * Lấy danh sách khung giờ trống theo ngày (không lọc theo bác sĩ)
+     * Một khung giờ được coi là khả dụng nếu có ít nhất một bác sĩ làm việc trong khung giờ đó
+=======
      * Lấy danh sách khung giờ trống theo ngày
+
      */
     public List<DoctorTimeSlotDTO> getAvailableTimeSlotsByDate(LocalDate date) {
         List<DoctorTimeSlotDTO> timeSlots = createDefaultTimeSlots();
@@ -353,6 +378,10 @@ public class AppointmentService {
             if (doctorsAvailableForSlot > 0) {
                 slot.setStatus(AvailabilityStatus.AVAILABLE);
                 slot.setAvailableCount(doctorsAvailableForSlot);
+            } else {
+                // Nếu không có bác sĩ nào làm việc trong slot này, đánh dấu là UNAVAILABLE
+                slot.setStatus(AvailabilityStatus.UNAVAILABLE);
+                slot.setAvailableCount(0);
             }
         }
 
@@ -377,20 +406,6 @@ public class AppointmentService {
             }
         }
 
-        return timeSlots;
-    }
-
-    /**
-     * Tạo danh sách khung giờ mặc định từ 8h đến 16h
-     */
-    private List<DoctorTimeSlotDTO> createDefaultTimeSlots() {
-        List<DoctorTimeSlotDTO> timeSlots = new ArrayList<>();
-        for (int hour = 8; hour <= 16; hour++) {
-            LocalTime startTime = LocalTime.of(hour, 0);
-            LocalTime endTime = LocalTime.of(hour + 1, 0);
-            DoctorTimeSlotDTO slot = new DoctorTimeSlotDTO(startTime, endTime, AvailabilityStatus.AVAILABLE);
-            timeSlots.add(slot);
-        }
         return timeSlots;
     }
 

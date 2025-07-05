@@ -9,6 +9,10 @@ import org.eyespire.eyespireapi.repository.DoctorRepository;
 import org.eyespire.eyespireapi.repository.UserRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
@@ -19,7 +23,10 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -58,12 +65,91 @@ public class UserService {
         return userRepository.findByRole(role);
     }
     
+    // Phương thức lấy tất cả người dùng với phân trang và sắp xếp
+    public Map<String, Object> getAllUsersWithPagination(int page, int size, String sortBy, String sortDir) {
+        Sort sort = sortDir.equalsIgnoreCase("desc") ? Sort.by(sortBy).descending() : Sort.by(sortBy).ascending();
+        Pageable pageable = PageRequest.of(page, size, sort);
+        
+        Page<User> userPage = userRepository.findAll(pageable);
+        
+        Map<String, Object> response = new HashMap<>();
+        response.put("users", userPage.getContent());
+        response.put("currentPage", userPage.getNumber());
+        response.put("totalItems", userPage.getTotalElements());
+        response.put("totalPages", userPage.getTotalPages());
+        
+        return response;
+    }
+    
+    // Phương thức tìm kiếm người dùng theo từ khóa
+    public Map<String, Object> searchUsers(String keyword, int page, int size) {
+        Pageable pageable = PageRequest.of(page, size);
+        
+        Page<User> userPage = userRepository.findByNameContainingOrEmailContainingOrPhoneContaining(
+                keyword, keyword, keyword, pageable);
+        
+        Map<String, Object> response = new HashMap<>();
+        response.put("users", userPage.getContent());
+        response.put("currentPage", userPage.getNumber());
+        response.put("totalItems", userPage.getTotalElements());
+        response.put("totalPages", userPage.getTotalPages());
+        
+        return response;
+    }
+    
+    // Phương thức lọc người dùng theo vai trò
+    public Map<String, Object> getUsersByRole(UserRole role, int page, int size) {
+        Pageable pageable = PageRequest.of(page, size);
+        
+        Page<User> userPage = userRepository.findByRole(role, pageable);
+        
+        Map<String, Object> response = new HashMap<>();
+        response.put("users", userPage.getContent());
+        response.put("currentPage", userPage.getNumber());
+        response.put("totalItems", userPage.getTotalElements());
+        response.put("totalPages", userPage.getTotalPages());
+        
+        return response;
+    }
+    
+    // Phương thức lọc người dùng theo trạng thái
+    public Map<String, Object> getUsersByStatus(String status, int page, int size) {
+        Pageable pageable = PageRequest.of(page, size);
+        
+        Page<User> userPage = userRepository.findByStatus(status, pageable);
+        
+        Map<String, Object> response = new HashMap<>();
+        response.put("users", userPage.getContent());
+        response.put("currentPage", userPage.getNumber());
+        response.put("totalItems", userPage.getTotalElements());
+        response.put("totalPages", userPage.getTotalPages());
+        
+        return response;
+    }
+    
+    // Phương thức cập nhật trạng thái người dùng (khóa/mở khóa)
+    public User updateUserStatus(Integer id, String status) {
+        User user = getUserById(id);
+        if (user == null) {
+            throw new RuntimeException("Không tìm thấy người dùng");
+        }
+        
+        user.setStatus(status);
+        return userRepository.save(user);
+    }
+    
     // Phương thức mới để tạo người dùng mới (nhân viên)
     public User createUser(User user) {
         // Mã hóa mật khẩu trước khi lưu
         if (user.getPassword() != null) {
             user.setPassword(passwordEncoder.encode(user.getPassword()));
         }
+        
+        // Đặt trạng thái mặc định là active nếu chưa được đặt
+        if (user.getStatus() == null) {
+            user.setStatus("active");
+        }
+        
         return userRepository.save(user);
     }
     
@@ -105,6 +191,11 @@ public class UserService {
             existingUser.setAddressDetail(user.getAddressDetail());
         }
         
+        // Cập nhật trạng thái nếu có
+        if (user.getStatus() != null) {
+            existingUser.setStatus(user.getStatus());
+        }
+        
         // Cập nhật mật khẩu nếu có
         if (user.getPassword() != null && !user.getPassword().isEmpty()) {
             existingUser.setPassword(passwordEncoder.encode(user.getPassword()));
@@ -113,34 +204,12 @@ public class UserService {
         return userRepository.save(existingUser);
     }
     
-    // Phương thức mới để xóa người dùng (nhân viên)
-    public void deleteUser(Integer id) {
-        // Kiểm tra xem user có phải là bác sĩ không
-        Optional<User> userOptional = userRepository.findById(id);
-        if (userOptional.isPresent()) {
-            User user = userOptional.get();
-            
-            // Nếu là bác sĩ, cần xóa thông tin bác sĩ trước
-            if (user.getRole() == UserRole.DOCTOR) {
-                Optional<Doctor> doctorOptional = doctorRepository.findByUserId(id);
-                if (doctorOptional.isPresent()) {
-                    // Xóa bác sĩ trước
-                    doctorRepository.delete(doctorOptional.get());
-                }
-            }
-        }
-        
-        // Sau đó mới xóa user
-        userRepository.deleteById(id);
-    }
-
     public User updateProfile(Integer id, UpdateProfileRequest request) {
         Optional<User> userOptional = userRepository.findById(id);
         
         if (userOptional.isPresent()) {
             User user = userOptional.get();
             
-            // Cập nhật thông tin người dùng
             if (request.getName() != null) {
                 user.setName(request.getName());
             }
@@ -151,12 +220,10 @@ public class UserService {
             
             if (request.getGender() != null) {
                 try {
-                    // Chuyển đổi String thành GenderType
-                    GenderType genderType = GenderType.valueOf(request.getGender().toUpperCase());
-                    user.setGender(genderType);
+                    GenderType gender = GenderType.valueOf(request.getGender().toUpperCase());
+                    user.setGender(gender);
                 } catch (IllegalArgumentException e) {
-                    // Nếu không chuyển đổi được, giữ nguyên giá trị cũ
-                    System.out.println("Không thể chuyển đổi gender: " + request.getGender());
+                    throw new RuntimeException("Giới tính không hợp lệ");
                 }
             }
             
@@ -260,5 +327,36 @@ public class UserService {
 
     public List<User> getAllPatients() {
         return userRepository.findByRoleOrderByNameAsc(UserRole.PATIENT);
+    }
+    
+    // Phương thức cập nhật thời gian đăng nhập cuối cùng
+    public void updateLastLogin(Integer userId) {
+        User user = getUserById(userId);
+        if (user != null) {
+            user.setLastLogin(LocalDateTime.now());
+            userRepository.save(user);
+        }
+    }
+    
+    // Phương thức xóa người dùng (chỉ áp dụng cho nhân viên, không áp dụng cho bệnh nhân)
+    public void deleteUser(Integer id) {
+        User user = findById(id);
+        if (user == null) {
+            throw new RuntimeException("Không tìm thấy người dùng");
+        }
+        
+        // Kiểm tra xem có phải là bệnh nhân không
+        if (user.getRole() == UserRole.PATIENT) {
+            throw new RuntimeException("Không thể xóa tài khoản bệnh nhân, chỉ có thể khóa");
+        }
+        
+        // Nếu là bác sĩ, xóa thông tin bác sĩ trước
+        if (user.getRole() == UserRole.DOCTOR) {
+            Optional<Doctor> doctorOptional = doctorRepository.findByUserId(id);
+            doctorOptional.ifPresent(doctor -> doctorRepository.delete(doctor));
+        }
+        
+        // Xóa người dùng
+        userRepository.deleteById(id);
     }
 }

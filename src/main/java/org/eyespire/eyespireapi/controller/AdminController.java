@@ -9,6 +9,7 @@ import org.eyespire.eyespireapi.service.DoctorService;
 import org.eyespire.eyespireapi.service.EmailService;
 import org.eyespire.eyespireapi.service.UserService;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -98,10 +99,18 @@ public class AdminController {
     @DeleteMapping("/staff/{id}")
     public ResponseEntity<Map<String, Boolean>> deleteStaff(@PathVariable Integer id) {
         User existingStaff = userService.findById(id);
-        if (existingStaff == null || existingStaff.getRole() == UserRole.PATIENT) {
+        if (existingStaff == null) {
             return ResponseEntity.notFound().build();
         }
         
+        // Nếu là bệnh nhân, không cho phép xóa
+        if (existingStaff.getRole() == UserRole.PATIENT) {
+            // Khóa tài khoản bệnh nhân thay vì xóa
+            userService.updateUserStatus(id, "blocked");
+            return ResponseEntity.ok(Map.of("blocked", true));
+        }
+        
+        // Xóa nhân viên khỏi database
         userService.deleteUser(id);
         return ResponseEntity.ok(Map.of("deleted", true));
     }
@@ -196,6 +205,147 @@ public class AdminController {
                 "success", false,
                 "message", "Lỗi khi cập nhật thông tin bác sĩ: " + e.getMessage()
             ));
+        }
+    }
+
+    // === USER MANAGEMENT ENDPOINTS ===
+    
+    // Lấy tất cả người dùng với phân trang và sắp xếp
+    @GetMapping("/users")
+    public ResponseEntity<?> getAllUsers(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size,
+            @RequestParam(defaultValue = "name") String sortBy,
+            @RequestParam(defaultValue = "asc") String sortDir) {
+        try {
+            Map<String, Object> response = userService.getAllUsersWithPagination(page, size, sortBy, sortDir);
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            e.printStackTrace();
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("Lỗi khi lấy danh sách người dùng: " + e.getMessage());
+        }
+    }
+
+    // Lấy người dùng theo ID
+    @GetMapping("/users/{id}")
+    public ResponseEntity<?> getUserById(@PathVariable Integer id) {
+        try {
+            User user = userService.getUserById(id);
+            if (user != null) {
+                return ResponseEntity.ok(user);
+            } else {
+                return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                        .body("Không tìm thấy người dùng");
+            }
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("Lỗi khi lấy thông tin người dùng: " + e.getMessage());
+        }
+    }
+
+    // Tìm kiếm người dùng theo từ khóa
+    @GetMapping("/users/search")
+    public ResponseEntity<?> searchUsers(
+            @RequestParam String keyword,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size) {
+        try {
+            Map<String, Object> response = userService.searchUsers(keyword, page, size);
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            e.printStackTrace();
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("Lỗi khi tìm kiếm người dùng: " + e.getMessage());
+        }
+    }
+
+    // Lọc người dùng theo vai trò
+    @GetMapping("/users/filter/role/{role}")
+    public ResponseEntity<?> filterUsersByRole(
+            @PathVariable String role,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size) {
+        try {
+            UserRole userRole;
+            try {
+                userRole = UserRole.valueOf(role.toUpperCase());
+            } catch (IllegalArgumentException e) {
+                return ResponseEntity.badRequest().body("Vai trò không hợp lệ");
+            }
+            
+            Map<String, Object> response = userService.getUsersByRole(userRole, page, size);
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            e.printStackTrace();
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("Lỗi khi lọc người dùng theo vai trò: " + e.getMessage());
+        }
+    }
+
+    // Lọc người dùng theo trạng thái (active, inactive, blocked)
+    @GetMapping("/users/filter/status/{status}")
+    public ResponseEntity<?> filterUsersByStatus(
+            @PathVariable String status,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size) {
+        try {
+            if (!status.equals("active") && !status.equals("inactive") && !status.equals("blocked")) {
+                return ResponseEntity.badRequest().body("Trạng thái không hợp lệ");
+            }
+            
+            Map<String, Object> response = userService.getUsersByStatus(status, page, size);
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            e.printStackTrace();
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("Lỗi khi lọc người dùng theo trạng thái: " + e.getMessage());
+        }
+    }
+
+    // Thêm người dùng mới
+    @PostMapping("/users")
+    public ResponseEntity<?> createUser(@RequestBody User user) {
+        try {
+            User createdUser = userService.createUser(user);
+            return ResponseEntity.status(HttpStatus.CREATED).body(createdUser);
+        } catch (Exception e) {
+            e.printStackTrace();
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body("Lỗi khi tạo người dùng mới: " + e.getMessage());
+        }
+    }
+
+    // Cập nhật thông tin người dùng
+    @PutMapping("/users/{id}")
+    public ResponseEntity<?> updateUser(@PathVariable Integer id, @RequestBody User user) {
+        try {
+            user.setId(id);
+            User updatedUser = userService.updateUser(user);
+            return ResponseEntity.ok(updatedUser);
+        } catch (Exception e) {
+            e.printStackTrace();
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body("Lỗi khi cập nhật thông tin người dùng: " + e.getMessage());
+        }
+    }
+
+    // Khóa/mở khóa người dùng
+    @PutMapping("/users/{id}/toggle-status")
+    public ResponseEntity<?> toggleUserStatus(
+            @PathVariable Integer id,
+            @RequestParam String status) {
+        try {
+            if (!status.equals("active") && !status.equals("inactive") && !status.equals("blocked")) {
+                return ResponseEntity.badRequest().body("Trạng thái không hợp lệ");
+            }
+            
+            User updatedUser = userService.updateUserStatus(id, status);
+            return ResponseEntity.ok(updatedUser);
+        } catch (Exception e) {
+            e.printStackTrace();
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body("Lỗi khi thay đổi trạng thái người dùng: " + e.getMessage());
         }
     }
 }
