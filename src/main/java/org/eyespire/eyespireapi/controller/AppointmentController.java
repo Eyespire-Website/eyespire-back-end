@@ -3,6 +3,7 @@ package org.eyespire.eyespireapi.controller;
 import org.eyespire.eyespireapi.dto.*;
 import org.eyespire.eyespireapi.model.Appointment;
 import org.eyespire.eyespireapi.model.AppointmentInvoice;
+import org.eyespire.eyespireapi.model.MedicalService;
 import org.eyespire.eyespireapi.model.User;
 import org.eyespire.eyespireapi.model.enums.AppointmentStatus;
 import org.eyespire.eyespireapi.service.AppointmentInvoiceService;
@@ -36,7 +37,6 @@ public class AppointmentController {
     @Autowired
     private UserService userService;
 
-    // Đặt lịch khám mới
     @PostMapping
     public ResponseEntity<?> bookAppointment(@RequestBody AppointmentDTO appointmentDTO) {
         try {
@@ -47,7 +47,6 @@ public class AppointmentController {
         }
     }
 
-    // Lấy danh sách lịch hẹn của bệnh nhân
     @GetMapping("/patient/{patientId}")
     public ResponseEntity<?> getPatientAppointments(@PathVariable Integer patientId) {
         try {
@@ -63,7 +62,6 @@ public class AppointmentController {
         }
     }
 
-    // Lấy danh sách lịch hẹn của bác sĩ
     @GetMapping("/doctor/{doctorId}")
     public ResponseEntity<?> getDoctorAppointments(@PathVariable Integer doctorId) {
         try {
@@ -74,7 +72,6 @@ public class AppointmentController {
         }
     }
 
-    // Lấy thông tin chi tiết của một cuộc hẹn theo ID
     @GetMapping("/{id}")
     public ResponseEntity<?> getAppointmentById(@PathVariable Integer id) {
         try {
@@ -87,7 +84,6 @@ public class AppointmentController {
         }
     }
 
-    // Hủy lịch hẹn
     @PutMapping("/{id}/cancel")
     public ResponseEntity<?> cancelAppointment(@PathVariable Integer id) {
         try {
@@ -99,7 +95,6 @@ public class AppointmentController {
         }
     }
 
-    // Cập nhật trạng thái lịch hẹn
     @PutMapping("/{id}/status")
     @PreAuthorize("hasRole('DOCTOR')")
     public ResponseEntity<?> updateAppointmentStatus(@PathVariable Integer id, @RequestBody Map<String, String> statusUpdate) {
@@ -129,7 +124,6 @@ public class AppointmentController {
         }
     }
 
-    // Cập nhật thông tin lịch hẹn
     @PutMapping("/{id}")
     public ResponseEntity<?> updateAppointment(@PathVariable Integer id, @RequestBody AppointmentDTO appointmentDTO) {
         try {
@@ -141,14 +135,13 @@ public class AppointmentController {
         }
     }
 
-    // Cập nhật dịch vụ của lịch hẹn
-    @PutMapping("/{id}/service")
+    @PutMapping("/{id}/services")
     @PreAuthorize("hasRole('DOCTOR')")
-    public ResponseEntity<?> updateAppointmentService(@PathVariable Integer id, @RequestBody Map<String, Integer> serviceUpdate) {
+    public ResponseEntity<?> updateAppointmentServices(@PathVariable Integer id, @RequestBody Map<String, List<Integer>> serviceUpdate) {
         try {
-            Integer serviceId = serviceUpdate.get("serviceId");
-            if (serviceId == null || serviceId <= 0) {
-                return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("ID dịch vụ không hợp lệ");
+            List<Integer> serviceIds = serviceUpdate.get("serviceIds");
+            if (serviceIds == null || serviceIds.isEmpty()) {
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Danh sách ID dịch vụ không hợp lệ");
             }
 
             Optional<Appointment> appointmentOpt = appointmentService.getAppointmentById(id);
@@ -156,7 +149,7 @@ public class AppointmentController {
                 return ResponseEntity.status(HttpStatus.NOT_FOUND).body("Không tìm thấy lịch hẹn");
             }
 
-            Optional<Appointment> updatedAppointment = appointmentService.updateAppointmentService(id, serviceId);
+            Optional<Appointment> updatedAppointment = appointmentService.updateAppointmentServices(id, serviceIds);
             return updatedAppointment.map(appt -> ResponseEntity.ok(convertToDTO(appt)))
                     .orElseGet(() -> ResponseEntity.notFound().build());
         } catch (IllegalArgumentException e) {
@@ -284,20 +277,18 @@ public class AppointmentController {
         }
     }
 
-    // Chuyển đổi từ Appointment sang AppointmentDTO
     private AppointmentDTO convertToDTO(Appointment appointment) {
         AppointmentDTO dto = new AppointmentDTO();
 
         dto.setId(appointment.getId());
 
-        // Bảo vệ null cho patient
         dto.setUserId(appointment.getPatient() != null ? appointment.getPatient().getId() : null);
 
-        // Bảo vệ null cho doctor và service
         dto.setDoctorId(appointment.getDoctor() != null ? appointment.getDoctor().getId() : null);
-        dto.setServiceId(appointment.getService() != null ? appointment.getService().getId() : null);
+        dto.setServiceIds(appointment.getServices() != null
+                ? appointment.getServices().stream().map(MedicalService::getId).collect(Collectors.toList())
+                : null);
 
-        // Định dạng ngày giờ cho front-end, nếu appointmentTime không null
         if (appointment.getAppointmentTime() != null) {
             DateTimeFormatter dateFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd");
             DateTimeFormatter timeFormatter = DateTimeFormatter.ofPattern("HH:mm");
@@ -315,7 +306,6 @@ public class AppointmentController {
         dto.setNotes(appointment.getNotes());
         dto.setStatus(appointment.getStatus() != null ? appointment.getStatus().name() : null);
 
-        // Nếu có thông tin bệnh nhân, chuyển đổi sang UserDTO
         if (appointment.getPatient() != null) {
             UserDTO patientDTO = new UserDTO();
             patientDTO.setId(appointment.getPatient().getId());
@@ -336,7 +326,6 @@ public class AppointmentController {
             dto.setPatient(patientDTO);
         }
 
-        // Thêm thông tin thanh toán từ AppointmentInvoice
         try {
             Optional<AppointmentInvoice> invoiceOpt = appointmentInvoiceService.getInvoiceByAppointmentId(appointment.getId());
             if (invoiceOpt.isPresent()) {
@@ -358,12 +347,10 @@ public class AppointmentController {
             System.err.println("Lỗi khi lấy thông tin hóa đơn: " + e.getMessage());
         }
 
-        // Thêm thông tin dịch vụ
-        if (appointment.getService() != null) {
-            dto.setService(appointment.getService());
+        if (appointment.getServices() != null && !appointment.getServices().isEmpty()) {
+            dto.setServices(appointment.getServices());
         }
 
-        // Thêm thông tin bác sĩ
         if (appointment.getDoctor() != null) {
             DoctorDTO doctorDTO = new DoctorDTO();
             doctorDTO.setId(appointment.getDoctor().getId());
