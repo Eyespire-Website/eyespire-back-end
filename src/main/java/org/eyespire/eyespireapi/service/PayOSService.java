@@ -1,6 +1,8 @@
 package org.eyespire.eyespireapi.service;
 
 import org.eyespire.eyespireapi.dto.AppointmentDTO;
+import org.eyespire.eyespireapi.dto.OrderPayOSCreateRequest;
+import org.eyespire.eyespireapi.dto.OrderPayOSCreateResponse;
 import org.eyespire.eyespireapi.dto.PayOSCreateRequest;
 import org.eyespire.eyespireapi.dto.PayOSCreateResponse;
 import org.eyespire.eyespireapi.dto.PayOSVerifyResponse;
@@ -11,10 +13,7 @@ import org.eyespire.eyespireapi.repository.PaymentRepository;
 import org.eyespire.eyespireapi.repository.UserRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.HttpEntity;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.MediaType;
-import org.springframework.http.ResponseEntity;
+import org.springframework.http.*;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
@@ -182,7 +181,7 @@ public class PayOSService {
             // Tính signature theo đúng định dạng của PayOS
             String signature = generateSignature(
                 String.valueOf(payment.getTransactionNo()), 
-                payment.getAmount().toString(), 
+                String.valueOf(payment.getAmount().intValue()), 
                 description,
                 returnUrl,
                 cancelUrl
@@ -263,6 +262,178 @@ public class PayOSService {
         } catch (Exception e) {
             e.printStackTrace(); // In ra stack trace để dễ debug
             throw new RuntimeException("Lỗi khi tạo thanh toán PayOS: " + e.getMessage(), e);
+        }
+    }
+    
+    /**
+     * Tạo thanh toán đơn hàng qua PayOS
+     * Phương thức này riêng biệt cho đơn hàng và không ảnh hưởng đến luồng thanh toán lịch hẹn
+     */
+    public OrderPayOSCreateResponse createOrderPayment(OrderPayOSCreateRequest request) {
+        try {
+            // Kiểm tra dữ liệu đầu vào
+            if (request == null || request.getAmount() == null || request.getAmount().intValue() <= 0) {
+                throw new IllegalArgumentException("Số tiền thanh toán không hợp lệ");
+            }
+            
+            if (request.getReturnUrl() == null || request.getReturnUrl().isEmpty()) {
+                throw new IllegalArgumentException("URL trả về không được để trống");
+            }
+            
+            // Sử dụng orderCode từ request hoặc tạo mới nếu không có
+            String orderCode = request.getOrderCode();
+            if (orderCode == null || orderCode.isEmpty()) {
+                orderCode = String.valueOf(generateOrderCode());
+            }
+            
+            // Tạo request body cho PayOS API v2
+            Map<String, Object> paymentData = new HashMap<>();
+            
+            // Chuyển đổi orderCode từ chuỗi sang số nguyên
+            try {
+                // Chuyển đổi orderCode từ chuỗi sang số nguyên
+                long orderCodeNum = Long.parseLong(orderCode);
+                // Kiểm tra giới hạn của PayOS
+                if (orderCodeNum <= 0 || orderCodeNum > 9007199254740991L) {
+                    // Nếu vượt quá giới hạn, tạo mã mới
+                    orderCodeNum = generateOrderCode();
+                }
+                // Gửi orderCode dưới dạng số nguyên, không phải chuỗi
+                paymentData.put("orderCode", orderCodeNum);
+            } catch (NumberFormatException e) {
+                // Nếu không thể chuyển đổi, tạo mã mới
+                long orderCodeNum = generateOrderCode();
+                paymentData.put("orderCode", orderCodeNum);
+                // Cập nhật orderCode để sử dụng trong các bước tiếp theo
+                orderCode = String.valueOf(orderCodeNum);
+            }
+            
+            paymentData.put("amount", request.getAmount().intValue());
+            String description = request.getDescription() != null ? request.getDescription() : "Dat coc kham Eyespire";
+            paymentData.put("description", description);
+            String returnUrl = request.getReturnUrl();
+            paymentData.put("returnUrl", returnUrl);
+            String cancelUrl = request.getCancelUrl() != null ? request.getCancelUrl() : (returnUrl + "?status=cancel");
+            paymentData.put("cancelUrl", cancelUrl);
+            
+            // Thêm thông tin người mua nếu có
+            if (request.getBuyerName() != null) {
+                paymentData.put("buyerName", request.getBuyerName());
+            }
+            if (request.getBuyerEmail() != null) {
+                paymentData.put("buyerEmail", request.getBuyerEmail());
+            }
+            if (request.getBuyerPhone() != null) {
+                paymentData.put("buyerPhone", request.getBuyerPhone());
+            }
+            
+            // Thêm metadata từ request nếu có
+            if (request.getMetadata() != null && !request.getMetadata().isEmpty()) {
+                paymentData.put("metadata", request.getMetadata());
+            } 
+            // Nếu không có metadata trong request, tạo từ appointmentData
+            else if (request.getAppointmentData() != null) {
+                Map<String, Object> metadata = new HashMap<>();
+                AppointmentDTO appointmentData = request.getAppointmentData();
+                
+                if (appointmentData.getPatientName() != null) {
+                    metadata.put("patientName", appointmentData.getPatientName());
+                }
+                
+                if (appointmentData.getPatientPhone() != null) {
+                    metadata.put("patientPhone", appointmentData.getPatientPhone());
+                }
+                
+                if (appointmentData.getDoctorId() != null) {
+                    metadata.put("doctorId", appointmentData.getDoctorId());
+                }
+                
+                if (appointmentData.getServiceId() != null) {
+                    metadata.put("serviceId", appointmentData.getServiceId());
+                }
+                
+                // Thêm ngày hẹn
+                if (appointmentData.getAppointmentDate() != null) {
+                    metadata.put("appointmentDate", appointmentData.getAppointmentDate());
+                }
+                
+                // Thêm khung giờ
+                if (appointmentData.getTimeSlot() != null) {
+                    metadata.put("timeSlot", appointmentData.getTimeSlot());
+                }
+                
+                // Thêm userId nếu có
+                if (appointmentData.getUserId() != null) {
+                    metadata.put("userId", appointmentData.getUserId());
+                }
+                
+                // Thêm email nếu có
+                if (appointmentData.getPatientEmail() != null) {
+                    metadata.put("patientEmail", appointmentData.getPatientEmail());
+                }
+                
+                // Thêm ghi chú nếu có
+                if (appointmentData.getNotes() != null) {
+                    metadata.put("notes", appointmentData.getNotes());
+                }
+                
+                paymentData.put("metadata", metadata);
+            }
+            
+            // Thêm thông tin đơn hàng nếu có
+            if (request.getOrderData() != null) {
+                paymentData.put("orderData", request.getOrderData());
+            }
+            
+            // Tạo chữ ký
+            String signature = generateSignature(
+                    orderCode, 
+                    String.valueOf(request.getAmount().intValue()), 
+                    description, 
+                    returnUrl, 
+                    cancelUrl
+            );
+            paymentData.put("signature", signature);
+            
+            // Tạo header với thông tin xác thực
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            headers.set("x-client-id", clientId);
+            headers.set("x-api-key", apiKey);
+            
+            // Tạo request entity
+            HttpEntity<Map<String, Object>> requestEntity = new HttpEntity<>(paymentData, headers);
+            
+            // Gọi API PayOS để tạo thanh toán
+            ResponseEntity<Map> response = restTemplate.exchange(
+                    apiUrl + "/payment-requests",
+                    HttpMethod.POST,
+                    requestEntity,
+                    Map.class
+            );
+            
+            // Xử lý response
+            Map<String, Object> responseBody = response.getBody();
+            if (responseBody != null && responseBody.containsKey("data")) {
+                Map<String, Object> data = (Map<String, Object>) responseBody.get("data");
+                String checkoutUrl = (String) data.get("checkoutUrl");
+                String payosTransactionId = (String) data.get("id");
+                
+                // Tạo response
+                OrderPayOSCreateResponse paymentResponse = new OrderPayOSCreateResponse();
+                paymentResponse.setSuccess(true);
+                paymentResponse.setMessage("Tạo thanh toán thành công");
+                paymentResponse.setCheckoutUrl(checkoutUrl);
+                paymentResponse.setTransactionNo(orderCode);
+                paymentResponse.setPayosTransactionId(payosTransactionId);
+                
+                return paymentResponse;
+            } else {
+                throw new RuntimeException("Không thể tạo thanh toán: " + responseBody);
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+            throw new RuntimeException("Lỗi khi tạo thanh toán đơn hàng: " + e.getMessage(), e);
         }
     }
     
@@ -379,6 +550,9 @@ public class PayOSService {
             // Lấy thông tin từ callback
             String orderCode = params.get("orderCode");
             String status = params.get("status");
+            String payosId = params.get("id");
+            
+            System.out.println("Xác thực thanh toán với orderCode=" + orderCode + ", status=" + status + ", payosId=" + payosId);
             
             if (orderCode == null) {
                 return PayOSVerifyResponse.builder()
@@ -403,10 +577,16 @@ public class PayOSService {
                 // Cập nhật trạng thái thanh toán thành COMPLETED
                 payment.setStatus(PaymentStatus.COMPLETED);
                 payment.setPaymentDate(LocalDateTime.now());
+                
+                // Lưu payosTransactionId nếu có
+                if (payosId != null) {
+                    payment.setPayosTransactionId(payosId);
+                }
+                
                 payment = paymentRepository.save(payment);
                 
                 // Xác thực giao dịch với PayOS API
-                Map<String, Object> paymentInfo = getPaymentInfoFromPayOS(payment.getPayosTransactionId());
+                Map<String, Object> paymentInfo = getPaymentInfoFromPayOS(payosId != null ? payosId : payment.getPayosTransactionId());
                 System.out.println("Phản hồi xác thực từ PayOS: " + paymentInfo);
                 
                 if (paymentInfo != null && paymentInfo.containsKey("data")) {
@@ -466,78 +646,79 @@ public class PayOSService {
                             
                             // Ném lỗi nếu không có email để xác định người dùng
                             if (patientEmail == null || patientEmail.isEmpty()) {
-                                throw new RuntimeException("Không thể xác định người dùng: thiếu thông tin email");
+                                throw new IllegalStateException("Không có thông tin email để xác định người dùng");
                             }
                             
-                            // Tìm kiếm người dùng theo email
-                            Integer userId = userRepository.findByEmail(patientEmail)
-                                .map(User::getId)
-                                .orElse(null);
-                            
-                            // Nếu không tìm thấy, ném lỗi
-                            if (userId == null) {
-                                throw new RuntimeException("Không tìm thấy người dùng với email: " + patientEmail);
+                            // Tìm người dùng dựa trên email
+                            Optional<User> userOpt = userRepository.findByEmail(patientEmail);
+                            if (userOpt.isPresent()) {
+                                appointmentData.setUserId(userOpt.get().getId());
+                            } else {
+                                // Nếu không tìm thấy, đặt userId = 0 (người dùng không xác định)
+                                appointmentData.setUserId(0);
                             }
-                            
-                            appointmentData.setUserId(userId);
-                            System.out.println("Tìm thấy userId: " + userId + " từ email bệnh nhân");
                         } else {
                             appointmentData.setUserId(payment.getUserId());
                         }
                         System.out.println("userId: " + appointmentData.getUserId());
                         
+                        // Đặt thông tin bệnh nhân
                         appointmentData.setPatientName(payment.getPatientName());
-                        System.out.println("patientName: " + appointmentData.getPatientName());
-                        
                         appointmentData.setPatientEmail(payment.getPatientEmail());
-                        System.out.println("patientEmail: " + appointmentData.getPatientEmail());
-                        
                         appointmentData.setPatientPhone(payment.getPatientPhone());
-                        System.out.println("patientPhone: " + appointmentData.getPatientPhone());
-                        
                         appointmentData.setNotes(payment.getNotes());
+                        System.out.println("patientName: " + appointmentData.getPatientName());
+                        System.out.println("patientEmail: " + appointmentData.getPatientEmail());
+                        System.out.println("patientPhone: " + appointmentData.getPatientPhone());
                         System.out.println("notes: " + appointmentData.getNotes());
                         
+                        // Đặt paymentId
                         System.out.println("paymentId: " + appointmentData.getPaymentId());
                         
+                        // Tạo response
                         return PayOSVerifyResponse.builder()
                                 .success(true)
                                 .message("Thanh toán thành công")
+                                .status(status) // Truyền trạng thái từ PayOS
                                 .paymentId(payment.getId())
-                                .transactionNo(payment.getTransactionNo())
+                                .transactionNo(orderCode)
                                 .amount(payment.getAmount())
-                                .paymentDate(payment.getPaymentDate())
+                                .paymentDate(LocalDateTime.now())
+                                .payosTransactionId(payosId) // Lưu ID giao dịch PayOS
                                 .appointmentData(appointmentData)
                                 .build();
+                        
                     } catch (Exception e) {
                         System.err.println("Lỗi khi xử lý dữ liệu thanh toán: " + e.getMessage());
                         e.printStackTrace();
                         
-                        // Trả về thông báo lỗi chi tiết hơn
+                        // Vẫn trả về thành công nếu có lỗi khi xử lý dữ liệu
                         return PayOSVerifyResponse.builder()
-                                .success(false)
-                                .message("Lỗi khi xử lý dữ liệu thanh toán: " + e.getMessage())
+                                .success(true)
+                                .message("Thanh toán thành công nhưng có lỗi khi xử lý dữ liệu")
+                                .status(status) // Truyền trạng thái từ PayOS
                                 .paymentId(payment.getId())
+                                .transactionNo(orderCode)
+                                .amount(payment.getAmount())
+                                .paymentDate(LocalDateTime.now())
                                 .build();
                     }
                 }
             }
             
-            // Cập nhật trạng thái thanh toán thất bại
-            if ("CANCELLED".equals(status)) {
-                payment.setStatus(PaymentStatus.CANCELLED);
-            } else {
-                payment.setStatus(PaymentStatus.FAILED);
-            }
-            paymentRepository.save(payment);
-            
+            // Trả về response mặc định nếu không phải trạng thái PAID
             return PayOSVerifyResponse.builder()
-                    .success(false)
-                    .message("Thanh toán không thành công với trạng thái: " + status)
+                    .success("PAID".equals(status))
+                    .message("PAID".equals(status) ? "Thanh toán thành công" : "Thanh toán chưa hoàn tất")
+                    .status(status) // Truyền trạng thái từ PayOS
                     .paymentId(payment.getId())
+                    .transactionNo(orderCode)
+                    .amount(payment.getAmount())
+                    .paymentDate(LocalDateTime.now())
                     .build();
         } catch (Exception e) {
-            e.printStackTrace(); // In ra stack trace để dễ debug
+            System.err.println("Lỗi khi xác thực thanh toán: " + e.getMessage());
+            e.printStackTrace();
             return PayOSVerifyResponse.builder()
                     .success(false)
                     .message("Lỗi khi xác thực thanh toán: " + e.getMessage())
@@ -546,7 +727,9 @@ public class PayOSService {
     }
     
     private long generateOrderCode() {
-        // Tạo mã giao dịch dạng số dương
-        return System.currentTimeMillis(); // Sử dụng timestamp hiện tại làm mã giao dịch
+        // Tạo mã giao dịch dạng số dương không vượt quá 9007199254740991 (MAX_SAFE_INTEGER trong JavaScript)
+        // Sử dụng timestamp hiện tại nhưng đảm bảo không vượt quá giới hạn
+        long timestamp = System.currentTimeMillis() % 1000000000; // Lấy 9 chữ số cuối của timestamp
+        return timestamp + new Random().nextInt(1000); // Thêm số ngẫu nhiên để tránh trùng lặp
     }
 }
