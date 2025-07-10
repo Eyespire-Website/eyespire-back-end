@@ -3,6 +3,7 @@ package org.eyespire.eyespireapi.service;
 import org.eyespire.eyespireapi.dto.CartDTO;
 import org.eyespire.eyespireapi.dto.CartItemDTO;
 import org.eyespire.eyespireapi.dto.OrderDTO;
+import org.eyespire.eyespireapi.dto.ProductDTO;
 import org.eyespire.eyespireapi.model.*;
 import org.eyespire.eyespireapi.model.enums.OrderStatus;
 import org.eyespire.eyespireapi.model.enums.PaymentStatus;
@@ -13,15 +14,20 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
 
 @Service
 public class OrderService {
+
+    private static final Logger log = LoggerFactory.getLogger(OrderService.class);
 
     @Autowired
     private OrderRepository orderRepository;
@@ -35,6 +41,9 @@ public class OrderService {
     @Autowired
     private UserService userService;
 
+    @Autowired
+    private ProductService productService;
+
     /**
      * Tạo đơn hàng từ giỏ hàng
      * @param userId ID của người dùng
@@ -43,16 +52,23 @@ public class OrderService {
      */
     @Transactional
     public OrderDTO createOrderFromCart(Long userId, String shippingAddress) {
+        if (userId == null) {
+            throw new IllegalArgumentException("ID người dùng không được để trống");
+        }
+        if (shippingAddress == null || shippingAddress.trim().isEmpty()) {
+            throw new IllegalArgumentException("Địa chỉ giao hàng không được để trống");
+        }
+
         // Lấy thông tin giỏ hàng của người dùng
         CartDTO cartDTO = cartService.getUserCartById(userId);
-        if (cartDTO == null || cartDTO.getItems().isEmpty()) {
+        if (cartDTO == null || cartDTO.getItems() == null || cartDTO.getItems().isEmpty()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Giỏ hàng trống");
         }
 
         // Lấy thông tin người dùng
         User user = userService.getUserById(userId.intValue());
         if (user == null) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy người dùng");
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy người dùng với ID: " + userId);
         }
 
         // Tạo đơn hàng mới
@@ -67,18 +83,24 @@ public class OrderService {
         List<OrderItem> orderItems = new ArrayList<>();
 
         for (CartItemDTO cartItem : cartDTO.getItems()) {
+            if (cartItem.getProductId() == null || cartItem.getQuantity() <= 0) {
+                throw new IllegalArgumentException("Dữ liệu mục giỏ hàng không hợp lệ");
+            }
             OrderItem orderItem = new OrderItem();
             orderItem.setOrder(order);
-            
-            // Tạo đối tượng Product với ID
-            Product product = new Product();
-            product.setId(cartItem.getProductId());
+
+            // Fetch Product entity
+            ProductDTO productDTO = productService.getProductById(cartItem.getProductId());
+            if (productDTO == null) {
+                throw new IllegalArgumentException("Không tìm thấy sản phẩm với ID: " + cartItem.getProductId());
+            }
+            Product product = productService.convertToEntity(productDTO);
             orderItem.setProduct(product);
-            
+
             orderItem.setQuantity(cartItem.getQuantity());
             orderItem.setPrice(BigDecimal.valueOf(cartItem.getPrice()));
             orderItem.setSubtotal(BigDecimal.valueOf(cartItem.getPrice() * cartItem.getQuantity()));
-            
+
             orderItems.add(orderItem);
             totalAmount = totalAmount.add(orderItem.getSubtotal());
         }
@@ -102,8 +124,11 @@ public class OrderService {
      * @return Thông tin đơn hàng
      */
     public OrderDTO getOrderById(Integer orderId) {
-        Order order = orderRepository.findById(orderId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy đơn hàng"));
+        if (orderId == null) {
+            throw new IllegalArgumentException("ID đơn hàng không được để trống");
+        }
+        Order order = orderRepository.findById(orderId).orElseThrow(() ->
+                new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy đơn hàng với ID: " + orderId));
         return convertToDTO(order);
     }
 
@@ -113,8 +138,129 @@ public class OrderService {
      * @return Danh sách đơn hàng
      */
     public List<OrderDTO> getOrdersByUserId(Long userId) {
+        if (userId == null) {
+            throw new IllegalArgumentException("ID người dùng không được để trống");
+        }
         List<Order> orders = orderRepository.findByPatientIdOrderByCreatedAtDesc(userId);
         return orders.stream().map(this::convertToDTO).collect(Collectors.toList());
+    }
+
+    /**
+     * Lấy tất cả đơn hàng
+     * @return Danh sách tất cả đơn hàng
+     */
+    public List<OrderDTO> getAllOrders() {
+        List<Order> orders = orderRepository.findAll();
+        return orders.stream().map(this::convertToDTO).collect(Collectors.toList());
+    }
+
+    /**
+     * Cập nhật trạng thái đơn hàng
+     * @param id ID của đơn hàng
+     * @param status Trạng thái mới
+     * @return Thông tin đơn hàng đã cập nhật
+     */
+    @Transactional
+    public OrderDTO updateOrderStatus(Integer id, String status) {
+        log.info("Updating order status: id={}, status={}", id, status);
+        if (id == null) {
+            log.error("Order ID is null");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "ID đơn hàng không được để trống");
+        }
+        Order order = orderRepository.findById(id).orElseThrow(() -> {
+            log.error("Order not found for ID: {}", id);
+            return new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy đơn hàng với ID: " + id);
+        });
+        try {
+            OrderStatus orderStatus = OrderStatus.valueOf(status);
+            order.setStatus(orderStatus);
+            log.info("Successfully set status to {} for order {}", status, id);
+        } catch (IllegalArgumentException e) {
+            log.error("Invalid status: {}. Valid statuses: {}", status, Arrays.toString(OrderStatus.values()));
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Trạng thái không hợp lệ: " + status + ". Các giá trị hợp lệ: " + Arrays.toString(OrderStatus.values()));
+        }
+        Order updatedOrder = orderRepository.save(order);
+        log.info("Order {} updated successfully", id);
+        return convertToDTO(updatedOrder);
+    }
+
+
+    /**
+     * Cập nhật đơn hàng
+     * @param orderDTO Thông tin đơn hàng cần cập nhật
+     * @return Thông tin đơn hàng đã cập nhật
+     */
+    @Transactional
+    public OrderDTO updateOrder(OrderDTO orderDTO) {
+        if (orderDTO == null || orderDTO.getId() == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Thông tin đơn hàng hoặc ID không hợp lệ");
+        }
+
+        Order order = orderRepository.findById(orderDTO.getId()).orElseThrow(() ->
+                new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy đơn hàng với ID: " + orderDTO.getId()));
+
+        if (orderDTO.getUserId() != null) {
+            User user = userService.getUserById(orderDTO.getUserId().intValue());
+            if (user == null) {
+                throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy người dùng với ID: " + orderDTO.getUserId());
+            }
+            order.setPatient(user);
+        }
+
+        if (orderDTO.getShippingAddress() != null && !orderDTO.getShippingAddress().trim().isEmpty()) {
+            order.setShippingAddress(orderDTO.getShippingAddress());
+        }
+
+        if (orderDTO.getStatus() != null) {
+            try {
+                order.setStatus(OrderStatus.valueOf(orderDTO.getStatus()));
+            } catch (IllegalArgumentException e) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Trạng thái đơn hàng không hợp lệ: " + orderDTO.getStatus());
+            }
+        }
+
+        if (orderDTO.getItems() != null) {
+            order.getOrderItems().clear();
+            List<OrderItem> newItems = orderDTO.getItems().stream().map(itemDTO -> {
+                OrderItem orderItem = new OrderItem();
+                orderItem.setOrder(order);
+                ProductDTO productDTO = productService.getProductById(itemDTO.getProductId());
+                Product product = productService.convertToEntity(productDTO);
+                orderItem.setProduct(product);
+                orderItem.setQuantity(itemDTO.getQuantity());
+                orderItem.setPrice(itemDTO.getPrice());
+                orderItem.setSubtotal(itemDTO.getSubtotal());
+                return orderItem;
+            }).collect(Collectors.toList());
+            order.getOrderItems().addAll(newItems);
+        }
+
+        if (orderDTO.getTotalAmount() != null) {
+            order.setTotalAmount(orderDTO.getTotalAmount());
+        }
+
+        if (orderDTO.getOrderDate() != null) {
+            order.setOrderDate(orderDTO.getOrderDate());
+        }
+
+        Order updatedOrder = orderRepository.save(order);
+        return convertToDTO(updatedOrder);
+    }
+
+    /**
+     * Deletes an order by ID
+     * @param id The ID of the order to delete
+     * @throws IllegalArgumentException if the order is not found
+     */
+    @Transactional
+    public void deleteOrder(Integer id) {
+        if (id == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "ID đơn hàng không hợp lệ");
+        }
+        if (!orderRepository.existsById(id)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy đơn hàng với ID: " + id);
+        }
+        orderRepository.deleteById(id);
     }
 
     /**
@@ -123,40 +269,42 @@ public class OrderService {
      * @return DTO
      */
     private OrderDTO convertToDTO(Order order) {
+        if (order == null) {
+            throw new IllegalArgumentException("Đơn hàng không được để trống");
+        }
         OrderDTO dto = new OrderDTO();
         dto.setId(order.getId());
-        dto.setUserId(Long.valueOf(order.getPatient().getId()));
-        dto.setTotalAmount(order.getTotalAmount());
-        dto.setStatus(order.getStatus().toString());
+        dto.setUserId(order.getPatient() != null ? Long.valueOf(order.getPatient().getId()) : null);
+        dto.setTotalAmount(order.getTotalAmount() != null ? order.getTotalAmount() : BigDecimal.ZERO);
+        dto.setStatus(order.getStatus() != null ? order.getStatus().toString() : OrderStatus.PENDING.toString());
         dto.setOrderDate(order.getOrderDate());
         dto.setShippingAddress(order.getShippingAddress());
         dto.setCreatedAt(order.getCreatedAt());
-        
-        // Thông tin thanh toán
+
         if (order.getPayment() != null) {
             OrderDTO.PaymentDTO paymentDTO = new OrderDTO.PaymentDTO();
             paymentDTO.setId(order.getPayment().getId());
             paymentDTO.setTransactionNo(order.getPayment().getTransactionNo());
             paymentDTO.setAmount(order.getPayment().getAmount());
-            paymentDTO.setStatus(order.getPayment().getStatus().toString());
+            paymentDTO.setStatus(order.getPayment().getStatus() != null ? order.getPayment().getStatus().toString() : PaymentStatus.PENDING.toString());
             paymentDTO.setPaymentDate(order.getPayment().getPaymentDate());
             dto.setPayment(paymentDTO);
         }
-        
-        // Các mục đơn hàng
-        List<OrderDTO.OrderItemDTO> itemDTOs = order.getOrderItems().stream().map(item -> {
-            OrderDTO.OrderItemDTO itemDTO = new OrderDTO.OrderItemDTO();
-            itemDTO.setId(item.getId());
-            itemDTO.setProductId(item.getProduct().getId());
-            itemDTO.setProductName(item.getProduct().getName());
-            itemDTO.setQuantity(item.getQuantity());
-            itemDTO.setPrice(item.getPrice());
-            itemDTO.setSubtotal(item.getSubtotal());
-            return itemDTO;
-        }).collect(Collectors.toList());
-        
+
+        List<OrderDTO.OrderItemDTO> itemDTOs = order.getOrderItems() != null ?
+                order.getOrderItems().stream().map(item -> {
+                    OrderDTO.OrderItemDTO itemDTO = new OrderDTO.OrderItemDTO();
+                    itemDTO.setId(item.getId());
+                    itemDTO.setProductId(item.getProduct() != null ? item.getProduct().getId() : null);
+                    itemDTO.setProductName(item.getProduct() != null ? item.getProduct().getName() : "Không xác định");
+                    itemDTO.setQuantity(item.getQuantity());
+                    itemDTO.setPrice(item.getPrice() != null ? item.getPrice() : BigDecimal.ZERO);
+                    itemDTO.setSubtotal(item.getSubtotal() != null ? item.getSubtotal() : BigDecimal.ZERO);
+                    itemDTO.setImage(item.getProduct() != null ? item.getProduct().getImageUrl() : null);
+                    return itemDTO;
+                }).collect(Collectors.toList()) : new ArrayList<>();
+
         dto.setItems(itemDTOs);
-        
         return dto;
     }
 }

@@ -22,9 +22,10 @@ public class ProductDTO {
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
     private ProductType type;
-    private String status; // Trạng thái hiển thị: "Còn hàng", "Sắp hết", "Hết hàng"
-    
-    public static ProductDTO fromEntity(Product product) {
+    private String status;
+    private Long sales; // Total quantity sold
+
+    public static ProductDTO fromEntity(Product product, Long sales) {
         ProductDTO dto = new ProductDTO();
         dto.setId(product.getId());
         dto.setName(product.getName());
@@ -35,8 +36,9 @@ public class ProductDTO {
         dto.setCreatedAt(product.getCreatedAt());
         dto.setUpdatedAt(product.getUpdatedAt());
         dto.setType(product.getType());
-        
-        // Xác định trạng thái dựa trên số lượng tồn kho
+        dto.setSales(sales != null ? sales : 0L);
+
+        // Set status based on stock quantity
         if (product.getStockQuantity() <= 0) {
             dto.setStatus("Hết hàng");
         } else if (product.getStockQuantity() <= 5) {
@@ -44,7 +46,7 @@ public class ProductDTO {
         } else {
             dto.setStatus("Còn hàng");
         }
-        
+
         return dto;
     }
 }

@@ -33,6 +33,7 @@ public class OrderDTO {
         private Integer quantity;
         private BigDecimal price;
         private BigDecimal subtotal;
+        private String image; // Added image field
     }
 
     @Data
