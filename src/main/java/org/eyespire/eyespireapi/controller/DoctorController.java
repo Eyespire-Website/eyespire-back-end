@@ -72,6 +72,16 @@ public class DoctorController {
         return ResponseEntity.ok(Map.of("available", isAvailable));
     }
 
+    @GetMapping("/featured")
+    public ResponseEntity<List<Doctor>> getFeaturedDoctors() {
+        List<Doctor> allDoctors = doctorService.getAllDoctors();
+        // Lấy tối đa 6 bác sĩ đầu tiên làm bác sĩ nổi bật
+        List<Doctor> featuredDoctors = allDoctors.stream()
+                .limit(6)
+                .collect(Collectors.toList());
+        return ResponseEntity.ok(featuredDoctors);
+    }
+
     @PutMapping("/{id}")
     public ResponseEntity<?> updateDoctor(@PathVariable Integer id, @RequestBody DoctorDTO doctorDTO) {
         try {
