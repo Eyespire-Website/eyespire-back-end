@@ -11,7 +11,6 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
 
-import java.io.UnsupportedEncodingException;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
@@ -36,17 +35,6 @@ public class OrderController {
         try {
             Long userId = Long.valueOf(request.get("userId").toString());
             String shippingAddress = request.get("shippingAddress").toString();
-            
-            // Fix UTF-8 encoding for shipping address
-            if (shippingAddress != null) {
-                try {
-                    shippingAddress = new String(shippingAddress.getBytes("ISO-8859-1"), "UTF-8");
-                    log.debug("UTF-8 conversion applied to shipping address: {}", shippingAddress);
-                } catch (UnsupportedEncodingException e) {
-                    // If conversion fails, use original string
-                    log.warn("UTF-8 conversion failed for shipping address, using original: {}", e.getMessage());
-                }
-            }
             
             // Get shipping fee from request, default to 0 if not provided
             Double shippingFee = 0.0;
