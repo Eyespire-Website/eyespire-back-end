@@ -48,10 +48,11 @@ public class OrderService {
      * Tạo đơn hàng từ giỏ hàng
      * @param userId ID của người dùng
      * @param shippingAddress Địa chỉ giao hàng
+     * @param shippingFee Phí vận chuyển
      * @return Thông tin đơn hàng đã tạo
      */
     @Transactional
-    public OrderDTO createOrderFromCart(Long userId, String shippingAddress) {
+    public OrderDTO createOrderFromCart(Long userId, String shippingAddress, Double shippingFee) {
         if (userId == null) {
             throw new IllegalArgumentException("ID người dùng không được để trống");
         }
@@ -105,6 +106,11 @@ public class OrderService {
             totalAmount = totalAmount.add(orderItem.getSubtotal());
         }
 
+        // Cộng phí vận chuyển vào tổng tiền
+        if (shippingFee != null && shippingFee > 0) {
+            totalAmount = totalAmount.add(BigDecimal.valueOf(shippingFee));
+        }
+        
         order.setTotalAmount(totalAmount);
         order.setOrderItems(orderItems);
 

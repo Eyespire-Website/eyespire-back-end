@@ -37,7 +37,7 @@ public class Order {
     @Column(name = "order_date")
     private LocalDate orderDate;
     
-    @Column(name = "shipping_address")
+    @Column(name = "shipping_address", columnDefinition = "NVARCHAR(500)")
     private String shippingAddress;
     
     @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, orphanRemoval = true)
