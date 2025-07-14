@@ -58,8 +58,9 @@ public class DoctorController {
     @GetMapping("/{id}/available-slots")
     public ResponseEntity<List<DoctorTimeSlotDTO>> getAvailableTimeSlots(
             @PathVariable Integer id,
-            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
-        return ResponseEntity.ok(doctorService.getAvailableTimeSlots(id, date));
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date,
+            @RequestParam(required = false) Integer excludeAppointmentId) {
+        return ResponseEntity.ok(doctorService.getAvailableTimeSlots(id, date, excludeAppointmentId));
     }
 
     @GetMapping("/{id}/check-availability")
@@ -158,6 +159,37 @@ public class DoctorController {
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body("Lỗi khi lấy danh sách bệnh nhân: " + e.getMessage());
+        }
+    }
+    
+    /**
+     * Lấy danh sách bác sĩ có sẵn theo ngày và giờ
+     */
+    @GetMapping("/available")
+    public ResponseEntity<?> getAvailableDoctors(
+            @RequestParam String date,
+            @RequestParam(required = false) String time) {
+        try {
+            LocalDate appointmentDate = LocalDate.parse(date);
+            List<Doctor> allDoctors = doctorService.getAllDoctors();
+            
+            if (time != null && !time.isEmpty()) {
+                // Lọc doctors available cho ngày và giờ cụ thể
+                LocalTime appointmentTime = LocalTime.parse(time);
+                LocalDateTime appointmentDateTime = LocalDateTime.of(appointmentDate, appointmentTime);
+                
+                List<Doctor> availableDoctors = allDoctors.stream()
+                    .filter(doctor -> doctorService.isDoctorAvailable(doctor.getId(), appointmentDateTime))
+                    .collect(Collectors.toList());
+                    
+                return ResponseEntity.ok(availableDoctors);
+            } else {
+                // Trả về tất cả doctors nếu không có time parameter
+                return ResponseEntity.ok(allDoctors);
+            }
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("Lỗi khi lấy danh sách bác sĩ: " + e.getMessage());
         }
     }
 }

@@ -54,6 +54,10 @@ public interface AppointmentRepository extends JpaRepository<Appointment, Intege
     List<Appointment> findByAppointmentTimeBetweenAndStatusNot(
             LocalDateTime start, LocalDateTime end, AppointmentStatus status);
     
+    // Tìm lịch hẹn trong khoảng thời gian với trạng thái cụ thể
+    List<Appointment> findByAppointmentTimeBetweenAndStatus(
+            LocalDateTime start, LocalDateTime end, AppointmentStatus status);
+    
     // Tìm lịch hẹn theo ID thanh toán
     List<Appointment> findByPaymentId(Integer paymentId);
     

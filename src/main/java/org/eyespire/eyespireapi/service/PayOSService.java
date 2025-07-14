@@ -46,6 +46,9 @@ public class PayOSService {
     private UserRepository userRepository;
     
     @Autowired
+    private AppointmentService appointmentService;
+    
+    @Autowired
     private RestTemplate restTemplate;
 
     public PayOSCreateResponse createPayment(PayOSCreateRequest request) {
@@ -96,6 +99,8 @@ public class PayOSService {
                 }
                 
                 if (appointmentData.getPatientName() != null) {
+                    System.out.println("[UTF-8 DEBUG] createPayment - patientName: " + appointmentData.getPatientName());
+                    // Vietnamese text is already properly encoded as UTF-8 from frontend
                     payment.setPatientName(appointmentData.getPatientName());
                 }
                 
@@ -108,6 +113,8 @@ public class PayOSService {
                 }
                 
                 if (appointmentData.getNotes() != null) {
+                    System.out.println("[UTF-8 DEBUG] createPayment - notes: " + appointmentData.getNotes());
+                    // Vietnamese text is already properly encoded as UTF-8 from frontend
                     payment.setNotes(appointmentData.getNotes());
                 }
             }
@@ -663,6 +670,8 @@ public class PayOSService {
                         System.out.println("userId: " + appointmentData.getUserId());
                         
                         // Đặt thông tin bệnh nhân
+                        System.out.println("[UTF-8 DEBUG] verifyPaymentReturn - patientName from DB: " + payment.getPatientName());
+                        System.out.println("[UTF-8 DEBUG] verifyPaymentReturn - notes from DB: " + payment.getNotes());
                         appointmentData.setPatientName(payment.getPatientName());
                         appointmentData.setPatientEmail(payment.getPatientEmail());
                         appointmentData.setPatientPhone(payment.getPatientPhone());
@@ -675,10 +684,36 @@ public class PayOSService {
                         // Đặt paymentId
                         System.out.println("paymentId: " + appointmentData.getPaymentId());
                         
+                        // TẠO APPOINTMENT THỰC SỰ TRONG DATABASE
+                        try {
+                            System.out.println("Bắt đầu tạo appointment với dữ liệu: " + appointmentData);
+                            org.eyespire.eyespireapi.model.Appointment createdAppointment = appointmentService.createAppointment(appointmentData);
+                            System.out.println("Đã tạo appointment thành công với ID: " + createdAppointment.getId());
+                            
+                            // Cập nhật appointmentData với ID của appointment vừa tạo
+                            appointmentData.setId(createdAppointment.getId());
+                        } catch (Exception appointmentError) {
+                            System.err.println("Lỗi khi tạo appointment: " + appointmentError.getMessage());
+                            appointmentError.printStackTrace();
+                            
+                            // Vẫn trả về thành công thanh toán nhưng ghi nhận lỗi tạo appointment
+                            return PayOSVerifyResponse.builder()
+                                    .success(true)
+                                    .message("Thanh toán thành công nhưng có lỗi khi tạo lịch hẹn: " + appointmentError.getMessage())
+                                    .status(status)
+                                    .paymentId(payment.getId())
+                                    .transactionNo(orderCode)
+                                    .amount(payment.getAmount())
+                                    .paymentDate(LocalDateTime.now())
+                                    .payosTransactionId(payosId)
+                                    .appointmentData(appointmentData)
+                                    .build();
+                        }
+                        
                         // Tạo response
                         return PayOSVerifyResponse.builder()
                                 .success(true)
-                                .message("Thanh toán thành công")
+                                .message("Thanh toán và tạo lịch hẹn thành công")
                                 .status(status) // Truyền trạng thái từ PayOS
                                 .paymentId(payment.getId())
                                 .transactionNo(orderCode)

@@ -8,6 +8,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.io.UnsupportedEncodingException;
 import java.math.BigDecimal;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -140,12 +141,16 @@ public class MedicalRecordService {
             // Update diagnosis: Allow empty strings and set to "Chưa cập nhật" if empty
             if (diagnosis != null) {
                 String trimmedDiagnosis = diagnosis.trim();
-                record.setDiagnosis(trimmedDiagnosis.isEmpty() ? "Chưa cập nhật" : trimmedDiagnosis);
+                String newDiagnosis = trimmedDiagnosis.isEmpty() ? "Chưa cập nhật" : trimmedDiagnosis;
+                // Vietnamese text processing - no conversion needed
+                record.setDiagnosis(newDiagnosis);
             }
 
             // Update notes: Allow empty strings
             if (notes != null) {
-                record.setNotes(notes.trim());
+                String trimmedNotes = notes.trim();
+                // Vietnamese text processing - no conversion needed
+                record.setNotes(trimmedNotes);
             }
 
             // Update recommended products
@@ -269,6 +274,15 @@ public class MedicalRecordService {
             }
 
             // Save the record before updating the invoice to avoid premature flush
+            // Debug UTF-8 before database save
+            try {
+                System.out.println("[PRE-SAVE DEBUG] Diagnosis: " + record.getDiagnosis());
+                System.out.println("[PRE-SAVE DEBUG] Diagnosis bytes: " + java.util.Arrays.toString(record.getDiagnosis().getBytes("UTF-8")));
+                System.out.println("[PRE-SAVE DEBUG] Notes: " + record.getNotes());
+                System.out.println("[PRE-SAVE DEBUG] Notes bytes: " + java.util.Arrays.toString(record.getNotes().getBytes("UTF-8")));
+            } catch (Exception e) {
+                System.err.println("Error in UTF-8 debug: " + e.getMessage());
+            }
             MedicalRecord savedRecord = medicalRecordRepository.save(record);
 
             // Update invoice if appointment exists
@@ -291,6 +305,15 @@ public class MedicalRecordService {
             }
 
             System.out.println("Saved medical record: " + savedRecord);
+            // Debug UTF-8 after database save
+            try {
+                System.out.println("[POST-SAVE DEBUG] Diagnosis from DB: " + savedRecord.getDiagnosis());
+                System.out.println("[POST-SAVE DEBUG] Diagnosis bytes from DB: " + java.util.Arrays.toString(savedRecord.getDiagnosis().getBytes("UTF-8")));
+                System.out.println("[POST-SAVE DEBUG] Notes from DB: " + savedRecord.getNotes());
+                System.out.println("[POST-SAVE DEBUG] Notes bytes from DB: " + java.util.Arrays.toString(savedRecord.getNotes().getBytes("UTF-8")));
+            } catch (Exception e) {
+                System.err.println("Error in post-save UTF-8 debug: " + e.getMessage());
+            }
             return savedRecord;
         } catch (Exception e) {
             System.err.println("Error updating medical record ID: " + recordId + ", message: " + e.getMessage());
@@ -312,7 +335,26 @@ public class MedicalRecordService {
     public List<MedicalRecord> getPatientMedicalRecordsByUserId(Integer userId) {
         User patient = userRepository.findById(userId)
                 .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy bệnh nhân với userId: " + userId));
-        return medicalRecordRepository.findByPatientId(userId);
+        
+        System.out.println("[PATIENT RECORDS DEBUG] Getting medical records for patient ID: " + userId);
+        
+        // Get ALL medical records for this patient first (for debugging)
+        List<MedicalRecord> allRecords = medicalRecordRepository.findByPatientId(userId);
+        System.out.println("[PATIENT RECORDS DEBUG] Total medical records for patient: " + allRecords.size());
+        
+        for (MedicalRecord record : allRecords) {
+            String appointmentStatus = record.getAppointment() != null ? record.getAppointment().getStatus().toString() : "NO_APPOINTMENT";
+            System.out.println("[PATIENT RECORDS DEBUG] Record ID: " + record.getId() + 
+                             ", Appointment ID: " + (record.getAppointment() != null ? record.getAppointment().getId() : "null") +
+                             ", Status: " + appointmentStatus +
+                             ", Diagnosis: " + record.getDiagnosis());
+        }
+        
+        // Chỉ trả về hồ sơ bệnh án của các cuộc hẹn đã hoàn tất (COMPLETED)
+        List<MedicalRecord> completedRecords = medicalRecordRepository.findByPatientIdAndAppointmentStatus(userId, org.eyespire.eyespireapi.model.enums.AppointmentStatus.COMPLETED);
+        System.out.println("[PATIENT RECORDS DEBUG] COMPLETED records returned: " + completedRecords.size());
+        
+        return completedRecords;
     }
 
     public Optional<MedicalRecord> getMedicalRecordById(Integer recordId) {

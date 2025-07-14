@@ -2,6 +2,8 @@ package org.eyespire.eyespireapi.service;
 
 import org.eyespire.eyespireapi.dto.AppointmentDTO;
 import org.eyespire.eyespireapi.dto.DoctorTimeSlotDTO;
+
+import java.util.ArrayList;
 import org.eyespire.eyespireapi.model.Appointment;
 import org.eyespire.eyespireapi.model.AppointmentInvoice;
 import org.eyespire.eyespireapi.model.Doctor;
@@ -65,6 +67,9 @@ public class AppointmentService {
 
     @Autowired
     private AppointmentInvoiceService appointmentInvoiceService;
+
+    @Autowired
+    private RefundService refundService;
 
     // Số tiền cọc mặc định
     private static final BigDecimal DEFAULT_DEPOSIT_AMOUNT = new BigDecimal("10000");
@@ -217,20 +222,25 @@ public class AppointmentService {
         if (!appointmentOpt.isPresent()) {
             throw new IllegalArgumentException("Cuộc hẹn không tồn tại!");
         }
+        
+        Appointment appointment = appointmentOpt.get();
+        System.out.println("[APPOINTMENT STATUS DEBUG] Before updateAppointmentServices:");
+        System.out.println("[APPOINTMENT STATUS DEBUG] Appointment ID: " + appointmentId);
+        System.out.println("[APPOINTMENT STATUS DEBUG] Current Status: " + appointment.getStatus());
+        System.out.println("[APPOINTMENT STATUS DEBUG] Service IDs to update: " + serviceIds);
+        
         List<MedicalService> services = medicalServiceRepository.findAllById(serviceIds);
         if (services.size() != serviceIds.size()) {
             throw new IllegalArgumentException("Một hoặc nhiều dịch vụ không hợp lệ");
         }
-        Appointment appointment = appointmentOpt.get();
+        
         appointment.setServices(services);
-        return Optional.of(appointmentRepository.save(appointment));
-    }
-
-    /**
-     * Hủy lịch hẹn
-     */
-    public Optional<Appointment> cancelAppointment(Integer id) {
-        return updateAppointmentStatus(id, AppointmentStatus.CANCELED);
+        Appointment savedAppointment = appointmentRepository.save(appointment);
+        
+        System.out.println("[APPOINTMENT STATUS DEBUG] After updateAppointmentServices:");
+        System.out.println("[APPOINTMENT STATUS DEBUG] Final Status: " + savedAppointment.getStatus());
+        
+        return Optional.of(savedAppointment);
     }
 
     /**
@@ -256,28 +266,42 @@ public class AppointmentService {
      */
     @Transactional
     public Optional<Appointment> updateAppointment(Integer id, AppointmentDTO appointmentDTO) {
-        return appointmentRepository.findById(id)
-                .map(appointment -> {
-                    // Cập nhật thông tin bác sĩ nếu có
-                    if (appointmentDTO.getDoctorId() != null) {
-                        Doctor doctor = doctorRepository.findById(appointmentDTO.getDoctorId())
-                                .orElseThrow(() -> new RuntimeException("Không tìm thấy bác sĩ"));
-                        appointment.setDoctor(doctor);
-                    }
+        try {
+            System.out.println("[DEBUG] Starting updateAppointment for ID: " + id);
+            System.out.println("[DEBUG] AppointmentDTO: doctorId=" + appointmentDTO.getDoctorId() + 
+                             ", date=" + appointmentDTO.getAppointmentDate() + 
+                             ", time=" + appointmentDTO.getTimeSlot());
+            
+            return appointmentRepository.findById(id)
+                    .map(appointment -> {
+                        try {
+                            System.out.println("[DEBUG] Found appointment: " + appointment.getId());
+                            
+                            // Cập nhật thông tin bác sĩ nếu có
+                            if (appointmentDTO.getDoctorId() != null) {
+                                System.out.println("[DEBUG] Updating doctor to ID: " + appointmentDTO.getDoctorId());
+                                Doctor doctor = doctorRepository.findById(appointmentDTO.getDoctorId())
+                                        .orElseThrow(() -> new RuntimeException("Không tìm thấy bác sĩ"));
+                                appointment.setDoctor(doctor);
+                            }
 
-                    // Cập nhật danh sách dịch vụ nếu có
-                    if (appointmentDTO.getServiceIds() != null && !appointmentDTO.getServiceIds().isEmpty()) {
-                        List<MedicalService> services = medicalServiceRepository.findAllById(appointmentDTO.getServiceIds());
-                        if (services.size() != appointmentDTO.getServiceIds().size()) {
-                            throw new IllegalArgumentException("Một hoặc nhiều dịch vụ không hợp lệ");
-                        }
-                        appointment.setServices(services);
-                    } else if (appointmentDTO.getServiceId() != null) {
-                        // Hỗ trợ tương thích với serviceId cũ
-                        MedicalService service = medicalServiceRepository.findById(appointmentDTO.getServiceId())
-                                .orElseThrow(() -> new RuntimeException("Không tìm thấy dịch vụ"));
-                        appointment.setServices(List.of(service));
-                    }
+                            // Cập nhật danh sách dịch vụ nếu có
+                            if (appointmentDTO.getServiceIds() != null && !appointmentDTO.getServiceIds().isEmpty()) {
+                                System.out.println("[DEBUG] Updating services with IDs: " + appointmentDTO.getServiceIds());
+                                List<MedicalService> services = medicalServiceRepository.findAllById(appointmentDTO.getServiceIds());
+                                if (services.size() != appointmentDTO.getServiceIds().size()) {
+                                    throw new IllegalArgumentException("Một hoặc nhiều dịch vụ không hợp lệ");
+                                }
+                                appointment.setServices(new ArrayList<>(services));
+                            } else if (appointmentDTO.getServiceId() != null) {
+                                System.out.println("[DEBUG] Updating single service with ID: " + appointmentDTO.getServiceId());
+                                // Hỗ trợ tương thích với serviceId cũ
+                                MedicalService service = medicalServiceRepository.findById(appointmentDTO.getServiceId())
+                                        .orElseThrow(() -> new RuntimeException("Không tìm thấy dịch vụ"));
+                                List<MedicalService> serviceList = new ArrayList<>();
+                                serviceList.add(service);
+                                appointment.setServices(serviceList);
+                            }
 
                     // Cập nhật thời gian nếu có
                     if (appointmentDTO.getAppointmentDate() != null && appointmentDTO.getTimeSlot() != null) {
@@ -285,9 +309,16 @@ public class AppointmentService {
                         LocalTime appointmentTime = LocalTime.parse(appointmentDTO.getTimeSlot());
                         LocalDateTime appointmentDateTime = LocalDateTime.of(appointmentDate, appointmentTime);
 
-                        // Kiểm tra xem bác sĩ có khả dụng trong khung giờ này không
-                        if (appointment.getDoctor() != null && !doctorService.isDoctorAvailable(appointment.getDoctor().getId(), appointmentDateTime)) {
-                            throw new RuntimeException("Bác sĩ không có sẵn trong khung giờ này");
+                        // Kiểm tra xem bác sĩ có khả dụng trong khung giờ này không (loại trừ appointment hiện tại)
+                        if (appointment.getDoctor() != null) {
+                            System.out.println("Checking doctor availability for doctorId: " + appointment.getDoctor().getId() + 
+                                             ", appointmentTime: " + appointmentDateTime + ", excludeAppointmentId: " + id);
+                            boolean isAvailable = doctorService.isDoctorAvailable(appointment.getDoctor().getId(), appointmentDateTime, id);
+                            System.out.println("Doctor availability result: " + isAvailable);
+                            
+                            if (!isAvailable) {
+                                throw new RuntimeException("Bác sĩ không có sẵn trong khung giờ này");
+                            }
                         }
                         appointment.setAppointmentTime(appointmentDateTime);
                     }
@@ -308,13 +339,27 @@ public class AppointmentService {
                         appointment.setNotes(appointmentDTO.getNotes());
                     }
 
-                    // Cập nhật trạng thái nếu có
-                    if (appointmentDTO.getStatus() != null) {
-                        appointment.setStatus(AppointmentStatus.valueOf(appointmentDTO.getStatus()));
-                    }
+                            // Cập nhật trạng thái nếu có
+                            if (appointmentDTO.getStatus() != null) {
+                                System.out.println("[DEBUG] Updating status to: " + appointmentDTO.getStatus());
+                                appointment.setStatus(AppointmentStatus.valueOf(appointmentDTO.getStatus()));
+                            }
 
-                    return appointmentRepository.save(appointment);
-                });
+                            System.out.println("[DEBUG] About to save appointment");
+                            Appointment savedAppointment = appointmentRepository.save(appointment);
+                            System.out.println("[DEBUG] Successfully saved appointment: " + savedAppointment.getId());
+                            return savedAppointment;
+                        } catch (Exception e) {
+                            System.err.println("[ERROR] Error in appointment mapping: " + e.getMessage());
+                            e.printStackTrace();
+                            throw e;
+                        }
+                    });
+        } catch (Exception e) {
+            System.err.println("[ERROR] Error in updateAppointment: " + e.getMessage());
+            e.printStackTrace();
+            throw e;
+        }
     }
 
     /**
@@ -454,5 +499,34 @@ public class AppointmentService {
      */
     public List<MedicalService> getMedicalServices() {
         return medicalServiceRepository.findAll();
+    }
+
+    /**
+     * Hủy cuộc hẹn với lý do hủy và tự động tạo refund
+     */
+    @Transactional
+    public Optional<Appointment> cancelAppointment(Integer appointmentId, String cancellationReason) {
+        Optional<Appointment> appointmentOpt = appointmentRepository.findById(appointmentId);
+        if (appointmentOpt.isPresent()) {
+            Appointment appointment = appointmentOpt.get();
+            appointment.setStatus(AppointmentStatus.CANCELED);
+            appointment.setCancellationReason(cancellationReason);
+            appointment.setUpdatedAt(LocalDateTime.now());
+            
+            // Lưu appointment trước
+            Appointment savedAppointment = appointmentRepository.save(appointment);
+            
+            // Tự động tạo refund cho tiền cọc
+            try {
+                refundService.createRefundForCanceledAppointment(savedAppointment, cancellationReason);
+                System.out.println("Đã tạo refund cho appointment ID: " + appointmentId);
+            } catch (Exception e) {
+                System.err.println("Lỗi khi tạo refund cho appointment ID " + appointmentId + ": " + e.getMessage());
+                // Không throw exception để không ảnh hưởng đến việc hủy appointment
+            }
+            
+            return Optional.of(savedAppointment);
+        }
+        return Optional.empty();
     }
 }

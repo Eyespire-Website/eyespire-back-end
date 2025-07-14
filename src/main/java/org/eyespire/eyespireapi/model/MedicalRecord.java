@@ -34,13 +34,13 @@ public class MedicalRecord {
     @JoinColumn(name = "doctor_id")
     private Doctor doctor;
 
-    @Column
+    @Column(columnDefinition = "nvarchar(max)")
     private String diagnosis;
 
-    @Column
+    @Column(columnDefinition = "nvarchar(max)")
     private String prescription;
 
-    @Column
+    @Column(columnDefinition = "nvarchar(max)")
     private String notes;
 
     @Column(name = "record_file_url", length = 255)

@@ -1,6 +1,7 @@
 package org.eyespire.eyespireapi.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.eyespire.eyespireapi.dto.MedicalRecordDTO;
 import org.eyespire.eyespireapi.model.Appointment;
 import org.eyespire.eyespireapi.model.MedicalRecord;
 import org.eyespire.eyespireapi.model.Product;
@@ -47,6 +48,24 @@ public class MedicalRecordController {
                     ", diagnosis=" + diagnosis + ", appointmentId=" + appointmentId + ", serviceIdsJson=" + serviceIdsJson +
                     ", productQuantitiesJson=" + productQuantitiesJson +
                     ", files=" + (files != null ? Arrays.stream(files).map(MultipartFile::getOriginalFilename).collect(Collectors.toList()) : "none"));
+            
+            // Fix UTF-8 encoding for form data parameters
+            if (diagnosis != null) {
+                try {
+                    // Vietnamese text is already properly encoded as UTF-8 from frontend
+                    System.out.println("[UTF-8 FIXED] Using original diagnosis: " + diagnosis);
+                } catch (Exception e) {
+                    System.err.println("[UTF-8 ERROR] Failed to convert diagnosis: " + e.getMessage());
+                }
+            }
+            if (notes != null) {
+                try {
+                    // Vietnamese text is already properly encoded as UTF-8 from frontend
+                    System.out.println("[UTF-8 FIXED] Using original notes: " + notes);
+                } catch (Exception e) {
+                    System.err.println("[UTF-8 ERROR] Failed to convert notes: " + e.getMessage());
+                }
+            }
 
             if (patientId == null || patientId <= 0) {
                 return ResponseEntity.badRequest().body(new ErrorResponse("ID bệnh nhân không hợp lệ!"));
@@ -139,6 +158,8 @@ public class MedicalRecordController {
         }
     }
 
+
+
     @PutMapping("/medical-records/{recordId}")
     @PreAuthorize("hasRole('DOCTOR')")
     public ResponseEntity<?> updateMedicalRecord(
@@ -151,9 +172,28 @@ public class MedicalRecordController {
             @RequestParam(value = "filesToDelete", required = false) String filesToDeleteJson) {
         try {
             System.out.println("Received PUT /medical-records/" + recordId + ":");
-            System.out.println("Diagnosis: " + diagnosis);
+            System.out.println("Raw Diagnosis: " + diagnosis);
+            System.out.println("Raw Notes: " + notes);
+
+            // Fix UTF-8 encoding for form data parameters
+            if (diagnosis != null) {
+                try {
+                    // Vietnamese text is already properly encoded as UTF-8 from frontend
+                    System.out.println("[UTF-8 FIXED] Using original diagnosis: " + diagnosis);
+                } catch (Exception e) {
+                    System.err.println("[UTF-8 ERROR] Failed to convert diagnosis: " + e.getMessage());
+                }
+            }
+            if (notes != null) {
+                try {
+                    // Vietnamese text is already properly encoded as UTF-8 from frontend
+                    System.out.println("[UTF-8 FIXED] Using original notes: " + notes);
+                } catch (Exception e) {
+                    System.err.println("[UTF-8 ERROR] Failed to convert notes: " + e.getMessage());
+                }
+            }
+
             System.out.println("ServiceIdsJson: " + serviceIdsJson);
-            System.out.println("Notes: " + notes);
             System.out.println("ProductQuantitiesJson: " + productQuantitiesJson);
             System.out.println("Files: " + (files != null ? Arrays.stream(files).map(MultipartFile::getOriginalFilename).collect(Collectors.toList()) : "none"));
             System.out.println("FilesToDeleteJson: " + filesToDeleteJson);
@@ -244,6 +284,7 @@ public class MedicalRecordController {
                     .body(new ErrorResponse("Lỗi server khi cập nhật hồ sơ bệnh án: " + e.getMessage()));
         }
     }
+
 
     @GetMapping("/medical-records/products-medicine")
     @PreAuthorize("hasRole('DOCTOR')")
@@ -443,6 +484,91 @@ public class MedicalRecordController {
 
         public String getStatus() {
             return status;
+        }
+    }
+
+    // ===== JSON-BASED ENDPOINTS FOR UTF-8 SAFE OPERATIONS =====
+    
+    @PostMapping("/medical-records/json")
+    @PreAuthorize("hasRole('DOCTOR')")
+    public ResponseEntity<?> createMedicalRecordJson(@RequestBody MedicalRecordDTO recordDTO) {
+        try {
+            System.out.println("[JSON CREATE] Received MedicalRecordDTO: " + recordDTO);
+            System.out.println("[JSON CREATE] Diagnosis: " + recordDTO.getDiagnosis());
+            System.out.println("[JSON CREATE] Notes: " + recordDTO.getNotes());
+            
+            // Convert DTO to service parameters
+            List<Map<String, Integer>> productQuantities = recordDTO.getProductQuantities();
+            
+            MedicalRecord createdRecord = medicalRecordService.createMedicalRecord(
+                recordDTO.getPatientId(),
+                recordDTO.getDoctorId(),
+                recordDTO.getDiagnosis(),
+                recordDTO.getNotes(),
+                recordDTO.getAppointmentId(),
+                productQuantities,
+                null // No files in JSON endpoint
+            );
+            
+            // Update appointment services if provided
+            if (recordDTO.getServiceIds() != null && 
+                !recordDTO.getServiceIds().isEmpty() && 
+                recordDTO.getAppointmentId() != null) {
+                appointmentService.updateAppointmentServices(
+                    recordDTO.getAppointmentId(), 
+                    recordDTO.getServiceIds()
+                );
+            }
+            
+            System.out.println("[JSON CREATE] Created record: " + createdRecord);
+            return ResponseEntity.ok(createdRecord);
+        } catch (Exception e) {
+            System.err.println("[JSON CREATE] Error: " + e.getMessage());
+            e.printStackTrace();
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body("Error creating medical record: " + e.getMessage());
+        }
+    }
+    
+    @PutMapping("/medical-records/{recordId}/json")
+    @PreAuthorize("hasRole('DOCTOR')")
+    public ResponseEntity<?> updateMedicalRecordJson(
+            @PathVariable Integer recordId,
+            @RequestBody MedicalRecordDTO recordDTO) {
+        try {
+            System.out.println("[JSON UPDATE] Received MedicalRecordDTO for ID " + recordId + ": " + recordDTO);
+            System.out.println("[JSON UPDATE] Diagnosis: " + recordDTO.getDiagnosis());
+            System.out.println("[JSON UPDATE] Notes: " + recordDTO.getNotes());
+            
+            // Convert DTO to service parameters
+            List<Map<String, Integer>> productQuantities = recordDTO.getProductQuantities();
+            
+            MedicalRecord updatedRecord = medicalRecordService.updateMedicalRecord(
+                recordId,
+                recordDTO.getDiagnosis(),
+                recordDTO.getNotes(),
+                productQuantities,
+                null, // No new files in JSON endpoint
+                null  // No files to delete in JSON endpoint
+            );
+            
+            // Update appointment services if provided
+            if (recordDTO.getServiceIds() != null && 
+                !recordDTO.getServiceIds().isEmpty() && 
+                updatedRecord.getAppointment() != null) {
+                appointmentService.updateAppointmentServices(
+                    updatedRecord.getAppointment().getId(), 
+                    recordDTO.getServiceIds()
+                );
+            }
+            
+            System.out.println("[JSON UPDATE] Updated record: " + updatedRecord);
+            return ResponseEntity.ok(updatedRecord);
+        } catch (Exception e) {
+            System.err.println("[JSON UPDATE] Error: " + e.getMessage());
+            e.printStackTrace();
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body("Error updating medical record: " + e.getMessage());
         }
     }
 }

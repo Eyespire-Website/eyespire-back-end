@@ -27,7 +27,7 @@ public class Report {
     @JoinColumn(name = "generated_by")
     private User generatedBy;
     
-    @Column(name = "report_data")
+    @Column(name = "report_data", columnDefinition = "nvarchar(max)")
     private String reportData;
     
     @Column(name = "generated_at")

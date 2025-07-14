@@ -1,14 +1,12 @@
 package org.eyespire.eyespireapi.controller;
 
 import org.eyespire.eyespireapi.dto.*;
-import org.eyespire.eyespireapi.model.Appointment;
-import org.eyespire.eyespireapi.model.AppointmentInvoice;
-import org.eyespire.eyespireapi.model.MedicalService;
-import org.eyespire.eyespireapi.model.User;
+import org.eyespire.eyespireapi.model.*;
 import org.eyespire.eyespireapi.model.enums.AppointmentStatus;
 import org.eyespire.eyespireapi.service.AppointmentInvoiceService;
 import org.eyespire.eyespireapi.service.AppointmentService;
 import org.eyespire.eyespireapi.service.UserService;
+import org.eyespire.eyespireapi.service.RefundService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
@@ -37,6 +35,9 @@ public class AppointmentController {
     @Autowired
     private UserService userService;
 
+    @Autowired
+    private RefundService refundService;
+
     @PostMapping
     public ResponseEntity<?> bookAppointment(@RequestBody AppointmentDTO appointmentDTO) {
         try {
@@ -56,7 +57,11 @@ public class AppointmentController {
             }
 
             List<Appointment> appointments = appointmentService.getAppointmentsByPatient(patientId);
-            return ResponseEntity.ok(appointments);
+            // Convert to DTOs to include refund information
+            List<AppointmentDTO> appointmentDTOs = appointments.stream()
+                    .map(this::convertToDTO)
+                    .collect(Collectors.toList());
+            return ResponseEntity.ok(appointmentDTOs);
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Lỗi khi lấy danh sách lịch hẹn: " + e.getMessage());
         }
@@ -81,17 +86,6 @@ public class AppointmentController {
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body("Lỗi khi lấy thông tin chi tiết cuộc hẹn: " + e.getMessage());
-        }
-    }
-
-    @PutMapping("/{id}/cancel")
-    public ResponseEntity<?> cancelAppointment(@PathVariable Integer id) {
-        try {
-            Optional<Appointment> updatedAppointment = appointmentService.cancelAppointment(id);
-            return updatedAppointment.map(ResponseEntity::ok)
-                    .orElseGet(() -> ResponseEntity.notFound().build());
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Lỗi khi hủy lịch hẹn: " + e.getMessage());
         }
     }
 
@@ -247,6 +241,21 @@ public class AppointmentController {
         }
     }
 
+    @PutMapping("/{id}/cancel")
+    @PreAuthorize("hasRole('RECEPTIONIST') or hasRole('ADMIN')")
+    public ResponseEntity<?> cancelAppointment(
+            @PathVariable Integer id,
+            @RequestBody Map<String, String> request) {
+        try {
+            String cancellationReason = request.get("cancellationReason");
+            Optional<Appointment> updatedAppointment = appointmentService.cancelAppointment(id, cancellationReason);
+            return updatedAppointment.map(appt -> ResponseEntity.ok(convertToDTO(appt)))
+                    .orElseGet(() -> ResponseEntity.notFound().build());
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Lỗi khi hủy cuộc hẹn: " + e.getMessage());
+        }
+    }
+
     @GetMapping("/waiting-payment")
     public ResponseEntity<?> getWaitingPaymentAppointments() {
         try {
@@ -305,6 +314,7 @@ public class AppointmentController {
         dto.setPatientPhone(appointment.getPatientPhone());
         dto.setNotes(appointment.getNotes());
         dto.setStatus(appointment.getStatus() != null ? appointment.getStatus().name() : null);
+        dto.setCancellationReason(appointment.getCancellationReason());
 
         if (appointment.getPatient() != null) {
             UserDTO patientDTO = new UserDTO();
@@ -358,6 +368,38 @@ public class AppointmentController {
             doctorDTO.setSpecialization(appointment.getDoctor().getSpecialization());
             doctorDTO.setImageUrl(appointment.getDoctor().getImageUrl());
             dto.setDoctor(doctorDTO);
+        }
+        
+        // Thêm thông tin refund nếu appointment đã bị hủy
+        try {
+            if (appointment.getStatus() == AppointmentStatus.CANCELED) {
+                List<Refund> refunds = refundService.getRefundByAppointmentId(appointment.getId());
+                if (!refunds.isEmpty()) {
+                    // Lấy refund mới nhất (đã sort theo createdAt desc)
+                    Refund latestRefund = refunds.get(0);
+                    dto.setRequiresManualRefund(true);
+                    dto.setRefundStatus(latestRefund.getRefundStatus().name());
+                    dto.setRefundAmount(latestRefund.getRefundAmount());
+                    dto.setRefundCompletedBy(latestRefund.getRefundCompletedBy());
+                    dto.setRefundCompletedByRole(latestRefund.getRefundCompletedByRole() != null ? latestRefund.getRefundCompletedByRole().name() : null);
+                    dto.setRefundCompletedAt(latestRefund.getRefundCompletedAt());
+                } else {
+                    // Appointment đã hủy nhưng chưa có refund record
+                    dto.setRequiresManualRefund(true);
+                    dto.setRefundStatus("UNKNOWN");
+                    dto.setRefundAmount(java.math.BigDecimal.valueOf(10000)); // Default amount
+                }
+            } else {
+                // Appointment chưa hủy
+                dto.setRequiresManualRefund(false);
+                dto.setRefundStatus(null);
+            }
+        } catch (Exception e) {
+            System.err.println("Lỗi khi lấy thông tin refund: " + e.getMessage());
+            e.printStackTrace();
+            // Set default values nếu có lỗi
+            dto.setRequiresManualRefund(false);
+            dto.setRefundStatus(null);
         }
 
         return dto;

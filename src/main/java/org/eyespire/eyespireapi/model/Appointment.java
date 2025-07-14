@@ -61,6 +61,9 @@ public class Appointment {
     @Column(nullable = false)
     private AppointmentStatus status = AppointmentStatus.PENDING;
 
+    @Column(name = "cancellation_reason", columnDefinition = "nvarchar(max)")
+    private String cancellationReason;
+
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
 

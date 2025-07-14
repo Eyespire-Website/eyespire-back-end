@@ -63,7 +63,7 @@ public class Payment {
     @Column(name = "payos_pay_date")
     private String payosPayDate;
 
-    @Column(name = "payos_order_info")
+    @Column(name = "payos_order_info", columnDefinition = "nvarchar(max)")
     private String payosOrderInfo;
 
     @Column(name = "return_url")
@@ -90,15 +90,16 @@ public class Payment {
     @Column(name = "user_id")
     private Integer userId;
 
-    @Column(name = "patient_name")
+    @Column(name = "patient_name", columnDefinition = "nvarchar(255)")
     private String patientName;
 
-    @Column(name = "patient_email")
+    @Column(name = "patient_email", columnDefinition = "nvarchar(255)")
     private String patientEmail;
 
     @Column(name = "patient_phone")
     private String patientPhone;
 
+    @Column(columnDefinition = "nvarchar(max)")
     private String notes;
 
     @PrePersist
