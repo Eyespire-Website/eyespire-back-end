@@ -33,6 +33,13 @@ public class ProductFeedbackController {
         return new ResponseEntity<>(createdFeedback, HttpStatus.CREATED);
     }
 
+    @PutMapping("/{id}")
+    public ResponseEntity<ProductFeedbackDTO> updateFeedback(@PathVariable Integer id, @RequestBody ProductFeedbackDTO feedbackDTO) {
+        feedbackDTO.setId(id);
+        ProductFeedbackDTO updatedFeedback = feedbackService.updateFeedback(feedbackDTO);
+        return ResponseEntity.ok(updatedFeedback);
+    }
+
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> deleteFeedback(@PathVariable Integer id) {
         feedbackService.deleteFeedback(id);
