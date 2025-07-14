@@ -54,6 +54,28 @@ public class ProductFeedbackService {
         return convertToDTO(savedFeedback);
     }
 
+    public ProductFeedbackDTO updateFeedback(ProductFeedbackDTO feedbackDTO) {
+        ProductFeedback feedback = feedbackRepository.findById(feedbackDTO.getId())
+                .orElseThrow(() -> new RuntimeException("Feedback not found with id: " + feedbackDTO.getId()));
+
+        Product product = productRepository.findById(feedbackDTO.getProductId())
+                .orElseThrow(() -> new RuntimeException("Product not found with id: " + feedbackDTO.getProductId()));
+
+        User patient = userRepository.findById(feedbackDTO.getPatientId())
+                .orElseThrow(() -> new RuntimeException("User not found with id: " + feedbackDTO.getPatientId()));
+
+        feedback.setProduct(product);
+        feedback.setPatient(patient);
+        feedback.setRating(feedbackDTO.getRating());
+        feedback.setComment(feedbackDTO.getComment());
+        // Preserve original createdAt date
+        // Optionally update other fields as needed
+
+        ProductFeedback updatedFeedback = feedbackRepository.save(feedback);
+        return convertToDTO(updatedFeedback);
+    }
+
+
     public void deleteFeedback(Integer feedbackId) {
         ProductFeedback feedback = feedbackRepository.findById(feedbackId)
                 .orElseThrow(() -> new RuntimeException("Feedback not found with id: " + feedbackId));

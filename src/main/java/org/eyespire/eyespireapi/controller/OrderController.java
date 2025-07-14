@@ -35,13 +35,13 @@ public class OrderController {
         try {
             Long userId = Long.valueOf(request.get("userId").toString());
             String shippingAddress = request.get("shippingAddress").toString();
-            
+
             // Get shipping fee from request, default to 0 if not provided
             Double shippingFee = 0.0;
             if (request.containsKey("shippingFee") && request.get("shippingFee") != null) {
                 shippingFee = Double.valueOf(request.get("shippingFee").toString());
             }
-            
+
             OrderDTO orderDTO = orderService.createOrderFromCart(userId, shippingAddress, shippingFee);
             return ResponseEntity.ok(orderDTO);
         } catch (IllegalArgumentException e) {
