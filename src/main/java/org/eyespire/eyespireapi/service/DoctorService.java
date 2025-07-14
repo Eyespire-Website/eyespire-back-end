@@ -22,7 +22,9 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
@@ -175,6 +177,13 @@ public class DoctorService {
      * Lấy danh sách khung giờ trống của bác sĩ theo ngày
      */
     public List<DoctorTimeSlotDTO> getAvailableTimeSlots(Integer doctorId, LocalDate date) {
+        return getAvailableTimeSlots(doctorId, date, null);
+    }
+    
+    /**
+     * Lấy danh sách khung giờ trống của bác sĩ theo ngày (có thể loại trừ appointment cụ thể)
+     */
+    public List<DoctorTimeSlotDTO> getAvailableTimeSlots(Integer doctorId, LocalDate date, Integer excludeAppointmentId) {
         // Tạo danh sách khung giờ mặc định từ 8h đến 16h
         List<DoctorTimeSlotDTO> timeSlots = createDefaultTimeSlots();
 
@@ -205,27 +214,62 @@ public class DoctorService {
             }
         }
 
-        // Chỉ lấy các lịch hẹn đang chờ xác nhận (PENDING) hoặc đã xác nhận (CONFIRMED)
-        List<Appointment> appointments = appointmentRepository.findByDoctorIdAndAppointmentTimeBetween(
+        // Lấy các lịch hẹn PENDING và CONFIRMED của bác sĩ cụ thể này
+        List<Appointment> doctorAppointments = appointmentRepository.findByDoctorIdAndAppointmentTimeBetween(
                 doctorId,
                 date.atStartOfDay(),
                 date.atTime(23, 59, 59)
         ).stream()
         .filter(appointment -> {
             AppointmentStatus status = appointment.getStatus();
-            return status == AppointmentStatus.PENDING || status == AppointmentStatus.CONFIRMED;
+            boolean isActiveStatus = status == AppointmentStatus.PENDING || status == AppointmentStatus.CONFIRMED;
+            boolean isNotExcluded = excludeAppointmentId == null || !appointment.getId().equals(excludeAppointmentId);
+            return isActiveStatus && isNotExcluded;
         })
         .collect(Collectors.toList());
 
-        // Cập nhật trạng thái khung giờ dựa trên lịch hẹn đã đặt (không bao gồm đã hủy)
-        for (Appointment appointment : appointments) {
-            LocalTime appointmentTime = appointment.getAppointmentTime().toLocalTime();
+        // Lấy tất cả appointments trong ngày để check global constraint
+        List<Appointment> allAppointments = appointmentRepository.findByAppointmentTimeBetween(
+                date.atStartOfDay(),
+                date.atTime(23, 59, 59)
+        ).stream()
+        .filter(appointment -> {
+            AppointmentStatus status = appointment.getStatus();
+            boolean isActiveStatus = status == AppointmentStatus.PENDING || status == AppointmentStatus.CONFIRMED;
+            boolean isNotExcluded = excludeAppointmentId == null || !appointment.getId().equals(excludeAppointmentId);
+            return isActiveStatus && isNotExcluded;
+        })
+        .collect(Collectors.toList());
 
-            // Tìm khung giờ tương ứng và đánh dấu là đã đặt
-            for (DoctorTimeSlotDTO slot : timeSlots) {
-                if (slot.getStartTime().equals(appointmentTime)) {
+        // Đếm tổng số bác sĩ trong hệ thống (simplified logic)
+        long totalAvailableDoctors = doctorRepository.count();
+
+        // Cập nhật trạng thái slot
+        for (DoctorTimeSlotDTO slot : timeSlots) {
+            LocalTime slotTime = slot.getStartTime();
+            
+            // Check nếu bác sĩ này có appointment ở slot này
+            boolean doctorHasAppointment = doctorAppointments.stream()
+                    .anyMatch(appointment -> appointment.getAppointmentTime().toLocalTime().equals(slotTime));
+            
+            if (doctorHasAppointment) {
+                // Bác sĩ này có appointment -> BOOKED
+                slot.setStatus(AvailabilityStatus.BOOKED);
+                slot.setAvailableCount(0);
+            } else {
+                // Bác sĩ này không có appointment, check global constraint
+                long appointmentsAtThisSlot = allAppointments.stream()
+                        .filter(appointment -> appointment.getAppointmentTime().toLocalTime().equals(slotTime))
+                        .count();
+                
+                if (appointmentsAtThisSlot >= totalAvailableDoctors) {
+                    // Slot đã full globally -> BOOKED
                     slot.setStatus(AvailabilityStatus.BOOKED);
-                    break;
+                    slot.setAvailableCount(0);
+                } else {
+                    // Slot còn chỗ và bác sĩ này free -> AVAILABLE
+                    slot.setStatus(AvailabilityStatus.AVAILABLE);
+                    slot.setAvailableCount(1);
                 }
             }
         }
@@ -256,14 +300,25 @@ public class DoctorService {
      * Kiểm tra bác sĩ có khả dụng trong khung giờ đặt lịch không
      */
     public boolean isDoctorAvailable(Integer doctorId, LocalDateTime appointmentTime) {
+        return isDoctorAvailable(doctorId, appointmentTime, null);
+    }
+    
+    /**
+     * Kiểm tra bác sĩ có khả dụng trong khung giờ đặt lịch không (có thể loại trừ appointment cụ thể)
+     */
+    public boolean isDoctorAvailable(Integer doctorId, LocalDateTime appointmentTime, Integer excludeAppointmentId) {
         LocalDate appointmentDate = appointmentTime.toLocalDate();
         LocalTime appointmentTimeOfDay = appointmentTime.toLocalTime();
         
+        System.out.println("[DEBUG] Checking availability for doctorId: " + doctorId + ", date: " + appointmentDate + ", time: " + appointmentTimeOfDay);
+        
         // Kiểm tra xem bác sĩ có lịch làm việc trong ngày và khung giờ đó không
         List<DoctorAvailability> availabilities = doctorAvailabilityRepository.findByDoctorIdAndDate(doctorId, appointmentDate);
+        System.out.println("[DEBUG] Found " + availabilities.size() + " availability records");
         
         boolean isInWorkingHours = false;
         for (DoctorAvailability availability : availabilities) {
+            System.out.println("[DEBUG] Availability: " + availability.getStartTime() + "-" + availability.getEndTime() + ", status: " + availability.getStatus());
             if (availability.getStatus() == AvailabilityStatus.AVAILABLE &&
                 !appointmentTimeOfDay.isBefore(availability.getStartTime()) &&
                 !appointmentTimeOfDay.isAfter(availability.getEndTime())) {
@@ -272,6 +327,8 @@ public class DoctorService {
             }
         }
         
+        System.out.println("[DEBUG] Is in working hours: " + isInWorkingHours);
+        
         // Nếu không nằm trong giờ làm việc, trả về false
         if (!isInWorkingHours) {
             return false;
@@ -279,17 +336,26 @@ public class DoctorService {
         
         // Kiểm tra xem bác sĩ đã có lịch hẹn trong khung giờ đó chưa
         List<Appointment> appointments = appointmentRepository.findByDoctorIdAndAppointmentTime(doctorId, appointmentTime);
+        System.out.println("[DEBUG] Found " + appointments.size() + " appointments at this time");
         
         // Lọc chỉ lấy các cuộc hẹn đang chờ xác nhận (PENDING) hoặc đã xác nhận (CONFIRMED)
+        // và loại trừ appointment hiện tại nếu có
         List<Appointment> activeAppointments = appointments.stream()
             .filter(appointment -> {
                 AppointmentStatus status = appointment.getStatus();
-                return status == AppointmentStatus.PENDING || status == AppointmentStatus.CONFIRMED;
+                boolean isActiveStatus = status == AppointmentStatus.PENDING || status == AppointmentStatus.CONFIRMED;
+                boolean isNotExcluded = excludeAppointmentId == null || !appointment.getId().equals(excludeAppointmentId);
+                System.out.println("[DEBUG] Appointment ID: " + appointment.getId() + ", status: " + status + ", isActiveStatus: " + isActiveStatus + ", isNotExcluded: " + isNotExcluded + ", excludeId: " + excludeAppointmentId);
+                return isActiveStatus && isNotExcluded;
             })
             .collect(Collectors.toList());
         
+        System.out.println("[DEBUG] Active conflicting appointments: " + activeAppointments.size());
+        
         // Nếu không có lịch hẹn đang hoạt động nào, bác sĩ khả dụng
-        return activeAppointments.isEmpty();
+        boolean result = activeAppointments.isEmpty();
+        System.out.println("[DEBUG] Final availability result: " + result);
+        return result;
     }
     public Integer getDoctorIdByUserId(Integer userId) {
         Optional<Doctor> doctorOpt = doctorRepository.findByUserId(userId);

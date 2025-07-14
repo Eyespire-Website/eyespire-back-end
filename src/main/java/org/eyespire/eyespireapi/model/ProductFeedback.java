@@ -29,7 +29,7 @@ public class ProductFeedback {
     @Column
     private Integer rating;
     
-    @Column
+    @Column(columnDefinition = "nvarchar(max)")
     private String comment;
     
     @Column(name = "created_at")

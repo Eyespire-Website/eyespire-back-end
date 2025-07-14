@@ -21,10 +21,10 @@ public class Product {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Integer id;
 
-    @Column(length = 255)
+    @Column(length = 255, columnDefinition = "nvarchar(255)")
     private String name;
 
-    @Column
+    @Column(columnDefinition = "nvarchar(max)")
     private String description;
 
     @Column(precision = 10, scale = 2)
@@ -33,7 +33,7 @@ public class Product {
     @Column(name = "stock_quantity")
     private Integer stockQuantity;
 
-    @Column(name = "image_url", length = 255)
+    @Column(name = "image_url", length = 255, columnDefinition = "nvarchar(255)")
     private String imageUrl;
 
     @Column(name = "created_at")

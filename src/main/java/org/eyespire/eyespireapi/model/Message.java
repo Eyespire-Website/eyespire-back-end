@@ -26,7 +26,7 @@ public class Message {
     @JoinColumn(name = "receiver_id")
     private User receiver;
     
-    @Column
+    @Column(columnDefinition = "nvarchar(max)")
     private String content;
     
     @Column(name = "sent_at")

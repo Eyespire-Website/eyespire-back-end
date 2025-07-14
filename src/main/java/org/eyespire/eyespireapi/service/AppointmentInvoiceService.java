@@ -66,8 +66,17 @@ public class AppointmentInvoiceService {
         invoice.setIsFullyPaid(false); // Đánh dấu là chưa thanh toán đầy đủ
         
         // Cập nhật trạng thái cuộc hẹn sang WAITING_PAYMENT
+        // NHƯƠNG: Giữ nguyên trạng thái COMPLETED nếu đã hoàn tất để tránh ẩn hồ sơ bệnh án
         Appointment appointment = invoice.getAppointment();
-        appointment.setStatus(AppointmentStatus.WAITING_PAYMENT);
+        System.out.println("[INVOICE UPDATE DEBUG] Current appointment status: " + appointment.getStatus());
+        
+        // Chỉ thay đổi status nếu chưa COMPLETED
+        if (appointment.getStatus() != AppointmentStatus.COMPLETED) {
+            appointment.setStatus(AppointmentStatus.WAITING_PAYMENT);
+            System.out.println("[INVOICE UPDATE DEBUG] Changed status to WAITING_PAYMENT");
+        } else {
+            System.out.println("[INVOICE UPDATE DEBUG] Preserving COMPLETED status to keep medical records visible");
+        }
         appointmentRepository.save(appointment);
         
         return appointmentInvoiceRepository.save(invoice);

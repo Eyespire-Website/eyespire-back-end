@@ -26,6 +26,7 @@ public class AppointmentDTO {
     private String notes;           // Ghi chú bổ sung
     private Integer paymentId;      // ID của thanh toán liên kết với lịch hẹn
     private String status;
+    private String cancellationReason; // Lý do hủy cuộc hẹn
     private UserDTO patient;
 
     // Thông tin thanh toán
@@ -39,4 +40,12 @@ public class AppointmentDTO {
     private MedicalService service;      // Đối tượng dịch vụ (giữ nguyên cho tương thích)
     private List<MedicalService> services; // Danh sách đối tượng dịch vụ
     private DoctorDTO doctor;            // Đối tượng bác sĩ
+    
+    // Refund related fields
+    private Boolean requiresManualRefund;
+    private String refundStatus;
+    private BigDecimal refundAmount;
+    private String refundCompletedBy;
+    private String refundCompletedByRole;
+    private LocalDateTime refundCompletedAt;
 }
