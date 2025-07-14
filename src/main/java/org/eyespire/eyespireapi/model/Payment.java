@@ -29,11 +29,11 @@ public class Payment {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private PaymentStatus status;
-    
+
     @ManyToOne
     @JoinColumn(name = "invoice_id")
     private AppointmentInvoice appointmentInvoice;
-    
+
     // Loại thanh toán: DEPOSIT (tiền cọc) hoặc FINAL (thanh toán cuối cùng)
     @Enumerated(EnumType.STRING)
     @Column(name = "payment_type")
@@ -106,6 +106,7 @@ public class Payment {
     protected void onCreate() {
         this.createdAt = LocalDateTime.now();
         this.updatedAt = LocalDateTime.now();
+        this.paymentType = (payosTransactionId != null && !payosTransactionId.isEmpty()) ? PaymentType.PAYOS : PaymentType.CASH;
     }
 
     @PreUpdate

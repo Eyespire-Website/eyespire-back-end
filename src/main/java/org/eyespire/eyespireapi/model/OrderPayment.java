@@ -5,6 +5,8 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.eyespire.eyespireapi.model.enums.PaymentStatus;
+import org.eyespire.eyespireapi.model.enums.PaymentType;
+
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -28,6 +30,11 @@ public class OrderPayment {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private PaymentStatus status;
+
+    // ADDED: New field to store PaymentType
+    @Enumerated(EnumType.STRING)
+    @Column(name = "payment_type")
+    private PaymentType paymentType;
     
     @OneToOne
     @JoinColumn(name = "order_id")
@@ -44,11 +51,13 @@ public class OrderPayment {
     
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
-    
+
     @PrePersist
     protected void onCreate() {
         this.createdAt = LocalDateTime.now();
         this.updatedAt = LocalDateTime.now();
+        // ADDED: Set paymentType based on payosTransactionId
+        this.paymentType = (payosTransactionId != null && !payosTransactionId.isEmpty()) ? PaymentType.PAYOS : PaymentType.CASH;
     }
     
     @PreUpdate

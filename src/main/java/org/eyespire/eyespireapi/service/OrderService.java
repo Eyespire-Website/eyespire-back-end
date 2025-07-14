@@ -7,8 +7,10 @@ import org.eyespire.eyespireapi.dto.ProductDTO;
 import org.eyespire.eyespireapi.model.*;
 import org.eyespire.eyespireapi.model.enums.OrderStatus;
 import org.eyespire.eyespireapi.model.enums.PaymentStatus;
+import org.eyespire.eyespireapi.model.enums.PaymentType;
 import org.eyespire.eyespireapi.repository.OrderItemRepository;
 import org.eyespire.eyespireapi.repository.OrderRepository;
+import org.eyespire.eyespireapi.repository.ProductRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -19,9 +21,8 @@ import org.slf4j.LoggerFactory;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
+import java.time.LocalDateTime;
+import java.util.*;
 import java.util.stream.Collectors;
 
 @Service
@@ -43,6 +44,9 @@ public class OrderService {
 
     @Autowired
     private ProductService productService;
+
+    @Autowired
+    private ProductRepository productRepository;
 
     /**
      * Tạo đơn hàng từ giỏ hàng
@@ -121,6 +125,122 @@ public class OrderService {
         cartService.clearCartByUserId(userId.intValue());
 
         // Chuyển đổi sang DTO và trả về
+        return convertToDTO(savedOrder);
+    }
+
+    /**
+     * Tạo đơn hàng tại quầy
+     */
+    @Transactional
+    public OrderDTO createInStoreOrder(Long userId, List<Map<String, Object>> items, String paymentMethod, String shippingAddress) {
+        log.info("Creating in-store order for userId: {}, items: {}, paymentMethod: {}", userId, items, paymentMethod);
+
+        // Validate inputs
+        if (userId == null) {
+            log.error("userId is null");
+            throw new IllegalArgumentException("ID người dùng không được để trống");
+        }
+        if (items == null || items.isEmpty()) {
+            log.error("Items list is null or empty");
+            throw new IllegalArgumentException("Danh sách sản phẩm không được để trống");
+        }
+        if (paymentMethod == null || !Arrays.asList("CASH", "PAYOS").contains(paymentMethod)) {
+            log.error("Invalid paymentMethod: {}", paymentMethod);
+            throw new IllegalArgumentException("Phương thức thanh toán không hợp lệ: " + paymentMethod);
+        }
+
+        // Validate user
+        User user = userService.getUserById(userId.intValue());
+        if (user == null) {
+            log.error("User not found for ID: {}", userId);
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy người dùng với ID: " + userId);
+        }
+
+        // Create order
+        Order order = new Order();
+        order.setPatient(user);
+        order.setOrderDate(LocalDate.now());
+        order.setStatus(OrderStatus.PENDING);
+        order.setShippingAddress(shippingAddress);
+
+        // Process items
+        BigDecimal totalAmount = BigDecimal.ZERO;
+        List<OrderItem> orderItems = new ArrayList<>();
+
+        for (Map<String, Object> item : items) {
+            if (!item.containsKey("productId") || !item.containsKey("quantity") || !item.containsKey("price")) {
+                log.error("Invalid item data: {}", item);
+                throw new IllegalArgumentException("Thông tin sản phẩm không hợp lệ: " + item);
+            }
+
+            Integer productId;
+            Integer quantity;
+            BigDecimal price;
+
+            try {
+                productId = Integer.parseInt(item.get("productId").toString());
+                quantity = Integer.parseInt(item.get("quantity").toString());
+                price = new BigDecimal(item.get("price").toString());
+            } catch (NumberFormatException e) {
+                log.error("Invalid number format in item: {}", item);
+                throw new IllegalArgumentException("Dữ liệu sản phẩm không hợp lệ: " + item);
+            }
+
+            if (quantity <= 0) {
+                log.error("Invalid quantity: {}", quantity);
+                throw new IllegalArgumentException("Số lượng sản phẩm phải lớn hơn 0");
+            }
+
+            Product product = productRepository.findById(productId)
+                    .orElseThrow(() -> {
+                        log.error("Product not found for ID: {}", productId);
+                        return new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy sản phẩm với ID: " + productId);
+                    });
+
+            if (product.getStockQuantity() < quantity) {
+                log.error("Insufficient stock for product ID: {}, requested: {}, available: {}",
+                        productId, quantity, product.getStockQuantity());
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "Số lượng sản phẩm " + product.getName() + " vượt quá tồn kho");
+            }
+
+            OrderItem orderItem = new OrderItem();
+            orderItem.setOrder(order);
+            orderItem.setProduct(product);
+            orderItem.setQuantity(quantity);
+            orderItem.setPrice(price);
+            orderItem.setSubtotal(price.multiply(BigDecimal.valueOf(quantity)));
+
+            orderItems.add(orderItem);
+            totalAmount = totalAmount.add(orderItem.getSubtotal());
+
+            product.setStockQuantity(product.getStockQuantity() - quantity);
+            productRepository.save(product);
+        }
+
+        order.setTotalAmount(totalAmount);
+        order.setOrderItems(orderItems);
+
+        // Create OrderPayment
+        OrderPayment payment = new OrderPayment();
+        payment.setOrder(order);
+        payment.setAmount(totalAmount);
+        payment.setTransactionNo(UUID.randomUUID().toString());
+        payment.setStatus(paymentMethod.equals("CASH") ? PaymentStatus.COMPLETED : PaymentStatus.PENDING);
+        payment.setPaymentType(paymentMethod.equals("CASH") ? PaymentType.CASH : PaymentType.PAYOS);
+        payment.setPaymentDate(LocalDateTime.now());
+
+        order.setPayment(payment);
+
+        // Save order
+        Order savedOrder = orderRepository.save(order);
+        log.info("In-store order created successfully: {}", savedOrder.getId());
+
+        if (paymentMethod.equals("CASH")) {
+            order.setStatus(OrderStatus.COMPLETED);
+            orderRepository.save(order);
+        }
+
         return convertToDTO(savedOrder);
     }
 

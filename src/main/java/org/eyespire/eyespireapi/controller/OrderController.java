@@ -69,6 +69,74 @@ public class OrderController {
     }
 
     /**
+     * Tạo đơn hàng tại quầy
+     */
+    @PostMapping("/instore")
+    public ResponseEntity<?> createInStoreOrder(@RequestBody Map<String, Object> request) {
+        try {
+            log.info("Received in-store order request: {}", request);
+
+            if (!request.containsKey("userId")) {
+                throw new IllegalArgumentException("userId là bắt buộc");
+            }
+            Long userId;
+            try {
+                userId = Long.valueOf(request.get("userId").toString());
+            } catch (NumberFormatException e) {
+                throw new IllegalArgumentException("userId không hợp lệ");
+            }
+
+            if (!request.containsKey("items") || !(request.get("items") instanceof List)) {
+                throw new IllegalArgumentException("Danh sách sản phẩm (items) là bắt buộc");
+            }
+            List<Map<String, Object>> items = (List<Map<String, Object>>) request.get("items");
+            if (items.isEmpty()) {
+                throw new IllegalArgumentException("Phải có ít nhất một sản phẩm trong đơn hàng");
+            }
+
+            if (!request.containsKey("paymentMethod")) {
+                throw new IllegalArgumentException("Phương thức thanh toán là bắt buộc");
+            }
+            String paymentMethod = request.get("paymentMethod").toString();
+            if (!Arrays.asList("CASH", "PAYOS").contains(paymentMethod)) {
+                throw new IllegalArgumentException("Phương thức thanh toán không hợp lệ: " + paymentMethod);
+            }
+
+            for (Map<String, Object> item : items) {
+                if (!item.containsKey("productId") || !item.containsKey("quantity") || !item.containsKey("price")) {
+                    throw new IllegalArgumentException("Thông tin sản phẩm không hợp lệ");
+                }
+                try {
+                    Integer.parseInt(item.get("productId").toString());
+                    Integer.parseInt(item.get("quantity").toString());
+                    Double.parseDouble(item.get("price").toString());
+                } catch (NumberFormatException e) {
+                    throw new IllegalArgumentException("Dữ liệu sản phẩm không hợp lệ: " + item);
+                }
+            }
+
+            // Fix: Safely handle null shippingAddress
+            String shippingAddress = request.containsKey("shippingAddress") && request.get("shippingAddress") != null ?
+                    request.get("shippingAddress").toString() : null;
+
+            OrderDTO orderDTO = orderService.createInStoreOrder(userId, items, paymentMethod, shippingAddress);
+            return ResponseEntity.ok(orderDTO);
+        } catch (IllegalArgumentException e) {
+            log.error("Invalid data: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body("Dữ liệu không hợp lệ: " + e.getMessage());
+        } catch (ResponseStatusException e) {
+            log.error("ResponseStatusException: {}", e.getReason());
+            return ResponseEntity.status(e.getStatusCode())
+                    .body("Lỗi: " + e.getReason());
+        } catch (Exception e) {
+            log.error("Unexpected error: {}", e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("Lỗi khi tạo đơn hàng tại quầy: " + e.getMessage());
+        }
+    }
+
+    /**
      * Lấy thông tin đơn hàng theo ID
      * @param id ID của đơn hàng
      * @return Thông tin đơn hàng
