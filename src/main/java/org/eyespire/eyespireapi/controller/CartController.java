@@ -51,32 +51,38 @@ public class CartController {
      * Cập nhật số lượng sản phẩm trong giỏ hàng
      * @param cartItemId ID của item trong giỏ hàng
      * @param request Thông tin cập nhật
+     * @param userId ID của người dùng từ header
      * @return Thông tin giỏ hàng sau khi đã cập nhật
      */
     @PutMapping("/items/{cartItemId}")
     public ResponseEntity<CartDTO> updateCartItem(
             @PathVariable Integer cartItemId,
-            @Valid @RequestBody UpdateCartItemRequest request) {
-        return ResponseEntity.ok(cartService.updateCartItem(cartItemId, request));
+            @Valid @RequestBody UpdateCartItemRequest request,
+            @RequestHeader("User-Id") Integer userId) {
+        return ResponseEntity.ok(cartService.updateCartItemByUserId(cartItemId, request, userId));
     }
 
     /**
      * Xóa một sản phẩm khỏi giỏ hàng
      * @param cartItemId ID của item trong giỏ hàng
+     * @param userId ID của người dùng từ header
      * @return Thông tin giỏ hàng sau khi đã xóa sản phẩm
      */
     @DeleteMapping("/items/{cartItemId}")
-    public ResponseEntity<CartDTO> removeCartItem(@PathVariable Integer cartItemId) {
-        return ResponseEntity.ok(cartService.removeCartItem(cartItemId));
+    public ResponseEntity<CartDTO> removeCartItem(
+            @PathVariable Integer cartItemId,
+            @RequestHeader("User-Id") Integer userId) {
+        return ResponseEntity.ok(cartService.removeCartItemByUserId(cartItemId, userId));
     }
 
     /**
      * Xóa toàn bộ giỏ hàng
+     * @param userId ID của người dùng từ header
      * @return Thông tin giỏ hàng rỗng
      */
     @DeleteMapping
-    public ResponseEntity<CartDTO> clearCart() {
-        return ResponseEntity.ok(cartService.clearCart());
+    public ResponseEntity<CartDTO> clearCart(@RequestHeader("User-Id") Integer userId) {
+        return ResponseEntity.ok(cartService.clearCartByUserId(userId));
     }
 
     /**
