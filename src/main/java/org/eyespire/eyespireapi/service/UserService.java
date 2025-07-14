@@ -58,6 +58,10 @@ public class UserService {
     public User findById(Integer id) {
         return getUserById(id);
     }
+
+    public Optional<User> findByEmail(String email) {
+        return userRepository.findByEmail(email);
+    }
     
     // Phương thức mới để lấy tất cả nhân viên theo danh sách vai trò
     public List<User> findAllByRoleIn(List<UserRole> roles) {

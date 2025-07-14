@@ -3,6 +3,7 @@ package org.eyespire.eyespireapi.controller;
 import org.eyespire.eyespireapi.dto.ChangePasswordRequest;
 import org.eyespire.eyespireapi.dto.UpdateProfileRequest;
 import org.eyespire.eyespireapi.model.User;
+import org.eyespire.eyespireapi.model.enums.UserRole;
 import org.eyespire.eyespireapi.service.UserService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
@@ -90,6 +91,23 @@ public class UserController {
             e.printStackTrace();
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body("Lỗi khi lấy danh sách bệnh nhân: " + e.getMessage());
+        }
+    }
+    @PostMapping("/patients")
+    public ResponseEntity<?> createPatient(@RequestBody User user) {
+        try {
+            if (userService.findByEmail(user.getEmail()).isPresent()) {
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                        .body("Email đã tồn tại");
+            }
+            user.setRole(UserRole.PATIENT);
+            user.setStatus("active");
+            user.setPassword(null); // Không yêu cầu mật khẩu cho khách hàng
+            User newUser = userService.createUser(user);
+            return ResponseEntity.ok(newUser);
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body("Không thể tạo khách hàng: " + e.getMessage());
         }
     }
 }

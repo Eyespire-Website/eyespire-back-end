@@ -5,5 +5,7 @@ package org.eyespire.eyespireapi.model.enums;
  */
 public enum PaymentType {
     DEPOSIT,    // Tiền cọc
-    FINAL       // Thanh toán cuối cùng
+    FINAL,      // Thanh toán cuối cùng
+    PAYOS,      // Thanh toán qua PayOS
+    CASH        // Thanh toán tiền mặt
 }
