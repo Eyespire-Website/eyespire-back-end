@@ -192,17 +192,37 @@ public class CartService {
      */
     @Transactional
     public CartDTO clearCartByUserId(Integer userId) {
+        System.out.println("[DEBUG] clearCartByUserId called with userId: " + userId);
+        
         User user = userService.getUserById(userId);
         if (user == null) {
+            System.out.println("[DEBUG] User not found with ID: " + userId);
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found");
         }
+        System.out.println("[DEBUG] User found: " + user.getName());
         
         Cart cart = cartRepository.findByPatient(user)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Cart not found"));
-
+                .orElseThrow(() -> {
+                    System.out.println("[DEBUG] Cart not found for user: " + userId);
+                    return new ResponseStatusException(HttpStatus.NOT_FOUND, "Cart not found");
+                });
+        System.out.println("[DEBUG] Cart found with ID: " + cart.getId());
+        
+        // Get cart items count before deletion
+        List<CartItem> itemsToDelete = cartItemRepository.findByCart(cart);
+        System.out.println("[DEBUG] Found " + itemsToDelete.size() + " items to delete");
+        
+        System.out.println("[DEBUG] About to delete all cart items for cart ID: " + cart.getId());
         cartItemRepository.deleteByCart(cart);
+        System.out.println("[DEBUG] All cart items deleted successfully");
+        
+        // Force commit the transaction
+        cartItemRepository.flush();
+        System.out.println("[DEBUG] Repository flushed - changes committed to database");
 
-        return getUserCartById(Long.valueOf(userId));
+        CartDTO result = getUserCartById(Long.valueOf(userId));
+        System.out.println("[DEBUG] Returning cart with " + result.getTotalItems() + " items");
+        return result;
     }
 
     /**
@@ -255,6 +275,80 @@ public class CartService {
         dto.setPrice(cartItem.getProduct().getPrice().doubleValue());
         dto.setTotalPrice(cartItem.getQuantity() * cartItem.getProduct().getPrice().doubleValue());
         return dto;
+    }
+
+    /**
+     * Cập nhật số lượng sản phẩm trong giỏ hàng bằng userId
+     * @param cartItemId ID của item trong giỏ hàng
+     * @param request Thông tin cập nhật
+     * @param userId ID của người dùng
+     * @return CartDTO sau khi đã cập nhật
+     */
+    @Transactional
+    public CartDTO updateCartItemByUserId(Integer cartItemId, UpdateCartItemRequest request, Integer userId) {
+        User user = userService.getUserById(userId);
+        if (user == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found");
+        }
+        
+        Cart cart = cartRepository.findByPatient(user)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Cart not found"));
+
+        CartItem cartItem = cartItemRepository.findById(cartItemId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Cart item not found"));
+
+        // Kiểm tra xem item có thuộc giỏ hàng của người dùng không
+        if (!cartItem.getCart().getId().equals(cart.getId())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "You don't have permission to update this cart item");
+        }
+
+        cartItem.setQuantity(request.getQuantity());
+        cartItemRepository.save(cartItem);
+
+        return getUserCartById(Long.valueOf(userId));
+    }
+
+    /**
+     * Xóa một sản phẩm khỏi giỏ hàng bằng userId
+     * @param cartItemId ID của item trong giỏ hàng
+     * @param userId ID của người dùng
+     * @return CartDTO sau khi đã xóa sản phẩm
+     */
+    @Transactional
+    public CartDTO removeCartItemByUserId(Integer cartItemId, Integer userId) {
+        System.out.println("[DEBUG] removeCartItemByUserId called with cartItemId: " + cartItemId + ", userId: " + userId);
+        
+        User user = userService.getUserById(userId);
+        if (user == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found");
+        }
+        System.out.println("[DEBUG] User found: " + user.getName());
+        
+        Cart cart = cartRepository.findByPatient(user)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Cart not found"));
+        System.out.println("[DEBUG] Cart found with ID: " + cart.getId());
+
+        CartItem cartItem = cartItemRepository.findById(cartItemId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Cart item not found"));
+        System.out.println("[DEBUG] CartItem found - ID: " + cartItem.getId() + ", Product: " + cartItem.getProduct().getName() + ", Cart ID: " + cartItem.getCart().getId());
+
+        // Kiểm tra xem item có thuộc giỏ hàng của người dùng không
+        if (!cartItem.getCart().getId().equals(cart.getId())) {
+            System.out.println("[DEBUG] Permission denied - CartItem cart ID: " + cartItem.getCart().getId() + ", User cart ID: " + cart.getId());
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "You don't have permission to remove this cart item");
+        }
+        
+        System.out.println("[DEBUG] About to delete cart item with ID: " + cartItem.getId());
+        cartItemRepository.delete(cartItem);
+        System.out.println("[DEBUG] Cart item deleted successfully");
+        
+        // Force flush to ensure deletion is committed
+        cartItemRepository.flush();
+        System.out.println("[DEBUG] Repository flushed");
+
+        CartDTO result = getUserCartById(Long.valueOf(userId));
+        System.out.println("[DEBUG] Returning cart with " + result.getTotalItems() + " items");
+        return result;
     }
 
     /**
