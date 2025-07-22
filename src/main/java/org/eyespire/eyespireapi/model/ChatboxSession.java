@@ -22,7 +22,7 @@ public class ChatboxSession {
     @JoinColumn(name = "user_id")
     private User user;
     
-    @Column(name = "session_data")
+    @Column(name = "session_data", columnDefinition = "TEXT")
     private String sessionData;
     
     @Column(name = "created_at")

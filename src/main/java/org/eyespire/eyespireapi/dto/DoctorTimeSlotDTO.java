@@ -16,6 +16,7 @@ public class DoctorTimeSlotDTO {
     private LocalTime endTime;          // Thời gian kết thúc
     private AvailabilityStatus status;  // Trạng thái khả dụng
     private int availableCount = 3;     // Số lượng slot có sẵn cho mỗi khung giờ, mặc định là 3
+    private Integer doctorId;           // ID của bác sĩ (để frontend filter)
     
     // Constructor tiện ích để tạo từ thời gian và trạng thái
     public DoctorTimeSlotDTO(LocalTime startTime, LocalTime endTime, AvailabilityStatus status) {
