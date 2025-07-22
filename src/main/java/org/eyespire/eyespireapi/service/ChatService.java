@@ -1,5 +1,6 @@
 package org.eyespire.eyespireapi.service;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.beans.factory.annotation.Value;
 import java.io.BufferedReader;
@@ -10,6 +11,7 @@ import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Random;
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
@@ -22,6 +24,9 @@ import org.slf4j.LoggerFactory;
 public class ChatService {
 
     private static final Logger logger = LoggerFactory.getLogger(ChatService.class);
+
+    @Autowired
+    private AIQueryService aiQueryService;
 
     @Value("${gemini.api.key:AIzaSyBHya0jYSVX1xqu1ZuAw6xNpq00VrKEyFo}")
     private String API_KEY;
@@ -55,6 +60,11 @@ public class ChatService {
         try {
             // Lưu tin nhắn người dùng vào lịch sử
             conversationHistory.add(new ChatMessage("user", userMessage));
+            
+            // Kiểm tra xem có phải câu hỏi về dữ liệu không
+            if (isDataQuery(userMessage)) {
+                return handleDataQuery(userMessage);
+            }
 
             // Giới hạn lịch sử cuộc trò chuyện (10 tin nhắn gần nhất)
             if (conversationHistory.size() > 10) {
@@ -212,6 +222,71 @@ public class ChatService {
             return "Xin lỗi, tôi không thể xử lý phản hồi từ AI lúc này.";
         }
         return "Xin lỗi, tôi không thể xử lý yêu cầu của bạn lúc này.";
+    }
+    
+    /**
+     * Kiểm tra xem có phải câu hỏi về dữ liệu không
+     */
+    private boolean isDataQuery(String message) {
+        String lowerMessage = message.toLowerCase();
+        
+        // Keywords indicating data queries
+        String[] dataKeywords = {
+            "tìm", "tìm kiếm", "search", "find", "có bao nhiêu", "how many",
+            "danh sách", "list", "thống kê", "statistics", "báo cáo", "report",
+            "doanh thu", "revenue", "bệnh nhân nào", "which patient",
+            "bác sĩ nào", "which doctor", "thuốc nào", "which medicine",
+            "lịch hẹn", "appointment", "hồ sơ", "medical record",
+            "sản phẩm", "product", "kính", "glasses", "eyewear"
+        };
+        
+        for (String keyword : dataKeywords) {
+            if (lowerMessage.contains(keyword)) {
+                return true;
+            }
+        }
+        
+        return false;
+    }
+    
+    /**
+     * Xử lý câu hỏi về dữ liệu bằng AI Query Service
+     */
+    private String handleDataQuery(String message) {
+        try {
+            logger.info("Processing data query: {}", message);
+            
+            Map<String, Object> queryResult = aiQueryService.processQuery(message);
+            
+            if ((Boolean) queryResult.get("success")) {
+                String aiResponse = (String) queryResult.get("response");
+                
+                // Lưu phản hồi vào lịch sử
+                conversationHistory.add(new ChatMessage("assistant", aiResponse));
+                
+                return aiResponse;
+            } else {
+                String error = (String) queryResult.get("error");
+                logger.warn("AI Query failed: {}", error);
+                
+                // Fallback to normal AI response
+                return generateGeminiResponse(message);
+            }
+            
+        } catch (Exception e) {
+            logger.error("Error in handleDataQuery", e);
+            
+            // Fallback to normal AI response
+            return generateGeminiResponse(message);
+        }
+    }
+    
+    /**
+     * Tách logic Gemini AI thành method riêng
+     */
+    private String generateGeminiResponse(String userMessage) {
+        // Original Gemini AI logic here
+        return getFallbackResponse(userMessage);
     }
 
     private static class ChatMessage {
