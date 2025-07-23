@@ -30,52 +30,53 @@ public class AIQueryService {
     private ProductService productService;
 
     // Query routing patterns - Semantic keywords
-    private final Map<String, List<String>> semanticKeywords = Map.of(
-        "APPOINTMENT", Arrays.asList("lịch hẹn", "cuộc hẹn", "appointment", "đặt lịch", "hẹn khám", "booking", "schedule"),
-        "MEDICAL_RECORD", Arrays.asList("hồ sơ", "bệnh án", "chẩn đoán", "triệu chứng", "medical record", "diagnosis", "khám bệnh", "điều trị"),
-        "PRODUCT", Arrays.asList("thuốc", "kính", "sản phẩm", "product", "medicine", "eyewear", "mua", "bán", "giá"),
-        "USER", Arrays.asList("bác sĩ", "bệnh nhân", "nhân viên", "doctor", "patient", "user", "staff", "người dùng"),
-        "ANALYTICS", Arrays.asList("doanh thu", "thống kê", "báo cáo", "analytics", "revenue", "report", "số liệu", "tổng kết")
-    );
+    private final Map<String, List<String>> semanticKeywords;
+    
+    {
+        semanticKeywords = new HashMap<>();
+        semanticKeywords.put("APPOINTMENT", Arrays.asList("lịch hẹn", "cuộc hẹn", "appointment", "đặt lịch", "hẹn khám", "booking", "schedule"));
+        semanticKeywords.put("MEDICAL_RECORD", Arrays.asList("hồ sơ", "bệnh án", "chẩn đoán", "triệu chứng", "medical record", "diagnosis", "khám bệnh", "điều trị"));
+        semanticKeywords.put("ORDER", Arrays.asList("đơn hàng", "order", "mua hàng", "purchase", "giao hàng", "delivery", "thanh toán", "payment", "hoá đơn", "invoice", "mua", "buy", "gần đây", "recent"));
+        semanticKeywords.put("PRODUCT", Arrays.asList("thuốc", "kính", "sản phẩm", "product", "medicine", "eyewear", "mua", "bán", "giá"));
+        semanticKeywords.put("USER", Arrays.asList("bác sĩ", "bệnh nhân", "nhân viên", "doctor", "patient", "user", "staff", "người dùng"));
+        semanticKeywords.put("ANALYTICS", Arrays.asList("doanh thu", "thống kê", "báo cáo", "analytics", "revenue", "report", "số liệu", "tổng kết"));
+    }
 
     // Date patterns for time-based queries
     private final Pattern datePattern = Pattern.compile("(?i)(hôm nay|today|tuần này|this week|tháng này|this month|năm này|this year|\\d{1,2}[/-]\\d{1,2}[/-]\\d{4})");
     
-    // Number patterns for quantity/price queries
+    // Number patterns for extracting quantities, prices, IDs
     private final Pattern numberPattern = Pattern.compile("\\d+");
 
     /**
-     * Main method for processing natural language queries
+     * Main entry point for processing queries
      */
-    public Map<String, Object> processQuery(String query) {
-        logger.info("Processing AI query: {}", query);
-        
+    public Map<String, Object> processQuery(String query, Integer userId) {
         Map<String, Object> result = new HashMap<>();
         
         try {
-            // 1. Query Routing - Determine query type
+            // Determine query type
             String queryType = routeQuery(query);
-            result.put("queryType", queryType);
             
-            // 2. Query Transform - Extract parameters
+            // Extract parameters
             Map<String, Object> parameters = extractParameters(query, queryType);
-            result.put("parameters", parameters);
+            parameters.put("userId", userId);
             
-            // 3. Execute query based on type
+            // Execute query
             Object data = executeQuery(queryType, parameters);
-            result.put("data", data);
             
-            // 4. Generate natural language response
+            // Generate natural language response
             String response = generateNaturalResponse(queryType, parameters, data);
-            result.put("response", response);
             
             result.put("success", true);
+            result.put("response", response);
+            result.put("queryType", queryType);
+            result.put("data", data);
             
         } catch (Exception e) {
             logger.error("Error processing query: {}", query, e);
             result.put("success", false);
-            result.put("error", e.getMessage());
-            result.put("response", "Xin lỗi, tôi không thể xử lý câu hỏi này. Vui lòng thử lại với cách diễn đạt khác.");
+            result.put("error", "Có lỗi xảy ra khi xử lý truy vấn. Vui lòng thử lại.");
         }
         
         return result;
@@ -144,6 +145,9 @@ public class AIQueryService {
             case "PRODUCT":
                 extractProductParameters(normalizedQuery, params);
                 break;
+            case "ORDER":
+                extractOrderParameters(normalizedQuery, params);
+                break;
             case "MEDICAL_RECORD":
                 extractMedicalParameters(normalizedQuery, params);
                 break;
@@ -164,6 +168,8 @@ public class AIQueryService {
                 return executeAppointmentQuery(parameters);
             case "MEDICAL_RECORD":
                 return executeMedicalRecordQuery(parameters);
+            case "ORDER":
+                return executeOrderQuery(parameters);
             case "PRODUCT":
                 return executeProductQuery(parameters);
             case "USER":
@@ -171,7 +177,7 @@ public class AIQueryService {
             case "ANALYTICS":
                 return executeAnalyticsQuery(parameters);
             default:
-                return "Tôi có thể giúp bạn tìm kiếm thông tin về lịch hẹn, hồ sơ bệnh án, sản phẩm, người dùng và báo cáo thống kê.";
+                return "Tôi có thể giúp bạn tìm kiếm thông tin về lịch hẹn, hồ sơ bệnh án, đơn hàng, sản phẩm, người dùng và báo cáo thống kê.";
         }
     }
 
@@ -189,12 +195,12 @@ public class AIQueryService {
             
             // Add date filter
             if (parameters.containsKey("date")) {
-                sql.append("AND DATE(a.appointment_date) = ? ");
+                sql.append("AND CAST(a.appointment_time AS DATE) = ? ");
                 params.add(parameters.get("date"));
             }
             
             // Add status filter
-            sql.append("ORDER BY a.appointment_date DESC");
+            sql.append("ORDER BY a.appointment_time DESC");
             
             return jdbcTemplate.queryForList(sql.toString(), params.toArray());
             
@@ -229,6 +235,54 @@ public class AIQueryService {
             
         } catch (Exception e) {
             logger.error("Error executing medical record query", e);
+            return Collections.emptyList();
+        }
+    }
+
+    /**
+     * Execute order queries
+     */
+    private Object executeOrderQuery(Map<String, Object> parameters) {
+        try {
+            StringBuilder sql = new StringBuilder();
+            sql.append("SELECT TOP 10 o.id, o.total_amount, o.status, o.order_date, o.created_at, ");
+            sql.append("o.shipping_address, COUNT(oi.id) as item_count ");
+            sql.append("FROM orders o ");
+            sql.append("LEFT JOIN order_items oi ON o.id = oi.order_id ");
+            sql.append("WHERE 1=1 ");
+            
+            List<Object> params = new ArrayList<>();
+            
+            // Filter by patient ID (userId)
+            if (parameters.containsKey("userId")) {
+                sql.append("AND o.patient_id = ? ");
+                params.add(parameters.get("userId"));
+            }
+            
+            // Add date filter if specified
+            if (parameters.containsKey("dateFrom")) {
+                sql.append("AND o.order_date >= ? ");
+                params.add(parameters.get("dateFrom"));
+            }
+            
+            if (parameters.containsKey("dateTo")) {
+                sql.append("AND o.order_date <= ? ");
+                params.add(parameters.get("dateTo"));
+            }
+            
+            // Add status filter if specified
+            if (parameters.containsKey("status")) {
+                sql.append("AND o.status = ? ");
+                params.add(parameters.get("status"));
+            }
+            
+            sql.append("GROUP BY o.id, o.total_amount, o.status, o.order_date, o.created_at, o.shipping_address ");
+            sql.append("ORDER BY o.created_at DESC");
+            
+            return jdbcTemplate.queryForList(sql.toString(), params.toArray());
+            
+        } catch (Exception e) {
+            logger.error("Error executing order query", e);
             return Collections.emptyList();
         }
     }
@@ -394,26 +448,6 @@ public class AIQueryService {
         }
     }
 
-    /**
-     * Generate natural language response based on query results
-     */
-    private String generateNaturalResponse(String queryType, Map<String, Object> parameters, Object data) {
-        switch (queryType) {
-            case "APPOINTMENT":
-                return generateAppointmentResponse(parameters, (List<Map<String, Object>>) data);
-            case "MEDICAL_RECORD":
-                return generateMedicalRecordResponse(parameters, (List<Map<String, Object>>) data);
-            case "PRODUCT":
-                return generateProductResponse(parameters, (List<Map<String, Object>>) data);
-            case "USER":
-                return generateUserResponse(parameters, (List<Map<String, Object>>) data);
-            case "ANALYTICS":
-                return generateAnalyticsResponse(parameters, (Map<String, Object>) data);
-            default:
-                return "Tôi đã tìm thấy thông tin bạn yêu cầu. Bạn có muốn biết thêm chi tiết gì không?";
-        }
-    }
-
     private String generateAppointmentResponse(Map<String, Object> parameters, List<Map<String, Object>> appointments) {
         if (appointments.isEmpty()) {
             return "Không tìm thấy lịch hẹn nào phù hợp với yêu cầu của bạn.";
@@ -508,5 +542,135 @@ public class AIQueryService {
         }
         
         return response.toString();
+    }
+    
+    /**
+     * Generate natural language response based on query results
+     */
+    private String generateNaturalResponse(String queryType, Map<String, Object> parameters, Object data) {
+        switch (queryType) {
+            case "APPOINTMENT":
+                return generateAppointmentResponse(parameters, (List<Map<String, Object>>) data);
+            case "MEDICAL_RECORD":
+                return generateMedicalRecordResponse(parameters, (List<Map<String, Object>>) data);
+            case "ORDER":
+                return generateOrderResponse(parameters, (List<Map<String, Object>>) data);
+            case "PRODUCT":
+                return generateProductResponse(parameters, (List<Map<String, Object>>) data);
+            case "USER":
+                return generateUserResponse(parameters, (List<Map<String, Object>>) data);
+            case "ANALYTICS":
+                return generateAnalyticsResponse(parameters, (Map<String, Object>) data);
+            default:
+                return "Tôi đã tìm thấy thông tin bạn yêu cầu. Bạn có muốn biết thêm chi tiết gì không?";
+        }
+    }
+    
+    private String generateOrderResponse(Map<String, Object> parameters, List<Map<String, Object>> orders) {
+        if (orders.isEmpty()) {
+            return "📎 Không tìm thấy đơn hàng nào.";
+        }
+        
+        StringBuilder response = new StringBuilder();
+        response.append("📎 **Đơn hàng của bạn (").append(orders.size()).append(" đơn hàng):**\n\n");
+        
+        for (int i = 0; i < Math.min(orders.size(), 5); i++) {
+            Map<String, Object> order = orders.get(i);
+            response.append("📎 **Đơn hàng #").append(order.get("id")).append(":**\n");
+            
+            if (order.get("total_amount") != null) {
+                response.append("💰 **Tổng tiền:** ").append(String.format("%,.0f VNĐ", order.get("total_amount"))).append("\n");
+            }
+            
+            if (order.get("status") != null) {
+                String status = order.get("status").toString();
+                String statusEmoji = getOrderStatusEmoji(status);
+                response.append(statusEmoji).append(" **Trạng thái:** ").append(getOrderStatusText(status)).append("\n");
+            }
+            
+            if (order.get("item_count") != null) {
+                response.append("📦 **Số sản phẩm:** ").append(order.get("item_count")).append("\n");
+            }
+            
+            if (order.get("order_date") != null) {
+                response.append("📅 **Ngày đặt:** ").append(order.get("order_date")).append("\n");
+            }
+            
+            response.append("\n");
+        }
+        
+        if (orders.size() > 5) {
+            response.append("📄 **Và ").append(orders.size() - 5).append(" đơn hàng khác...**\n\n");
+        }
+        
+        response.append("📞 **Lưu ý:** Nếu cần hỗ trợ về đơn hàng, hãy liên hệ chúng tôi.");
+        
+        return response.toString();
+    }
+    
+    private String getOrderStatusEmoji(String status) {
+        switch (status.toUpperCase()) {
+            case "PENDING":
+                return "⏳";
+            case "CONFIRMED":
+                return "✅";
+            case "PROCESSING":
+                return "🔄";
+            case "SHIPPED":
+                return "🚚";
+            case "DELIVERED":
+                return "🎉";
+            case "CANCELLED":
+                return "❌";
+            default:
+                return "📎";
+        }
+    }
+    
+    private String getOrderStatusText(String status) {
+        switch (status.toUpperCase()) {
+            case "PENDING":
+                return "Chờ xác nhận";
+            case "CONFIRMED":
+                return "Đã xác nhận";
+            case "PROCESSING":
+                return "Đang xử lý";
+            case "SHIPPED":
+                return "Đang giao hàng";
+            case "DELIVERED":
+                return "Đã giao hàng";
+            case "CANCELLED":
+                return "Đã hủy";
+            default:
+                return status;
+        }
+    }
+    
+    private void extractOrderParameters(String query, Map<String, Object> params) {
+        // Extract order status
+        if (query.contains("chờ") || query.contains("pending")) {
+            params.put("status", "PENDING");
+        } else if (query.contains("xác nhận") || query.contains("confirmed")) {
+            params.put("status", "CONFIRMED");
+        } else if (query.contains("xử lý") || query.contains("processing")) {
+            params.put("status", "PROCESSING");
+        } else if (query.contains("giao") || query.contains("shipped")) {
+            params.put("status", "SHIPPED");
+        } else if (query.contains("hoàn thành") || query.contains("delivered")) {
+            params.put("status", "DELIVERED");
+        } else if (query.contains("hủy") || query.contains("cancelled")) {
+            params.put("status", "CANCELLED");
+        }
+        
+        // Extract time range
+        if (query.contains("gần đây") || query.contains("recent")) {
+            params.put("timeRange", "RECENT");
+        } else if (query.contains("tuần này") || query.contains("this week")) {
+            params.put("timeRange", "THIS_WEEK");
+        } else if (query.contains("tháng này") || query.contains("this month")) {
+            params.put("timeRange", "THIS_MONTH");
+        } else if (query.contains("năm này") || query.contains("this year")) {
+            params.put("timeRange", "THIS_YEAR");
+        }
     }
 }

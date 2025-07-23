@@ -42,7 +42,7 @@ public class ChatController {
             }
             
             // Generate AI response
-            String response = chatService.generateResponse(userMessage);
+            String response = chatService.generateResponse(userMessage, userId);
             
             // Prepare chat history entry
             List<Map<String, Object>> chatHistory = new ArrayList<>();

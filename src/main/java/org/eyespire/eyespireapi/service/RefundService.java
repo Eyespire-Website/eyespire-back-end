@@ -162,6 +162,42 @@ public class RefundService {
     }
     
     /**
+     * Lấy danh sách bệnh nhân có lịch sử hoàn tiền
+     */
+    public List<Map<String, Object>> getPatientsWithRefunds() {
+        List<Refund> allRefunds = refundRepository.findAll();
+        
+        // Group refunds by patient
+        Map<Integer, Map<String, Object>> patientMap = new HashMap<>();
+        
+        for (Refund refund : allRefunds) {
+            Integer patientId = refund.getPatient().getId();
+            
+            if (!patientMap.containsKey(patientId)) {
+                Map<String, Object> patientInfo = new HashMap<>();
+                patientInfo.put("id", patientId);
+                patientInfo.put("name", refund.getAppointment().getPatientName());
+                patientInfo.put("email", refund.getAppointment().getPatientEmail());
+                patientInfo.put("phone", refund.getAppointment().getPatientPhone());
+                patientInfo.put("totalRefunds", 0);
+                patientInfo.put("totalRefundAmount", BigDecimal.ZERO);
+                patientMap.put(patientId, patientInfo);
+            }
+            
+            Map<String, Object> patientInfo = patientMap.get(patientId);
+            patientInfo.put("totalRefunds", (Integer) patientInfo.get("totalRefunds") + 1);
+            
+            BigDecimal currentAmount = (BigDecimal) patientInfo.get("totalRefundAmount");
+            BigDecimal refundAmount = refund.getRefundAmount() != null ? refund.getRefundAmount() : BigDecimal.ZERO;
+            patientInfo.put("totalRefundAmount", currentAmount.add(refundAmount));
+        }
+        
+        return patientMap.values().stream()
+                .sorted((a, b) -> ((String) a.get("name")).compareToIgnoreCase((String) b.get("name")))
+                .collect(java.util.stream.Collectors.toList());
+    }
+    
+    /**
      * Lấy các appointment đã hủy nhưng chưa có refund
      */
     public List<Appointment> getCancelledAppointmentsWithoutRefund() {
