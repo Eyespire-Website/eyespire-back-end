@@ -12,6 +12,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
@@ -109,18 +110,26 @@ public class RefundController {
     @GetMapping("/stats")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<RefundStatsDTO> getRefundStats(
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime startDate,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime endDate) {
+            @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd") LocalDate startDate,
+            @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd") LocalDate endDate) {
         try {
             // Mặc định là 30 ngày gần nhất nếu không có tham số
+            LocalDateTime startDateTime;
+            LocalDateTime endDateTime;
+            
             if (startDate == null) {
-                startDate = LocalDateTime.now().minusDays(30);
+                startDateTime = LocalDateTime.now().minusDays(30);
+            } else {
+                startDateTime = startDate.atStartOfDay();
             }
+            
             if (endDate == null) {
-                endDate = LocalDateTime.now();
+                endDateTime = LocalDateTime.now();
+            } else {
+                endDateTime = endDate.atTime(23, 59, 59);
             }
 
-            Map<String, Object> stats = refundService.getRefundStats(startDate, endDate);
+            Map<String, Object> stats = refundService.getRefundStats(startDateTime, endDateTime);
             
             RefundStatsDTO statsDTO = new RefundStatsDTO();
             statsDTO.setTotalRefunds((Long) stats.get("totalRefunds"));
@@ -214,6 +223,21 @@ public class RefundController {
         dto.setCreatedAt(refund.getCreatedAt());
         dto.setUpdatedAt(refund.getUpdatedAt());
         return dto;
+    }
+    
+    /**
+     * Lấy danh sách bệnh nhân có lịch sử hoàn tiền
+     * GET /api/refunds/patients-with-refunds
+     */
+    @GetMapping("/patients-with-refunds")
+    @PreAuthorize("hasRole('ADMIN') or hasRole('RECEPTIONIST')")
+    public ResponseEntity<List<Map<String, Object>>> getPatientsWithRefunds() {
+        try {
+            List<Map<String, Object>> patients = refundService.getPatientsWithRefunds();
+            return ResponseEntity.ok(patients);
+        } catch (Exception e) {
+            return ResponseEntity.internalServerError().build();
+        }
     }
     
     /**

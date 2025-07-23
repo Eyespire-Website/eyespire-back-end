@@ -56,14 +56,14 @@ public class ChatService {
     private static final int BASE_DELAY_MS = 500;
     private static final int MAX_DELAY_MS = 30000;
 
-    public String generateResponse(String userMessage) {
+    public String generateResponse(String userMessage, Integer userId) {
         try {
             // Lưu tin nhắn người dùng vào lịch sử
             conversationHistory.add(new ChatMessage("user", userMessage));
             
             // Kiểm tra xem có phải câu hỏi về dữ liệu không
             if (isDataQuery(userMessage)) {
-                return handleDataQuery(userMessage);
+                return handleDataQuery(userMessage, userId);
             }
 
             // Giới hạn lịch sử cuộc trò chuyện (10 tin nhắn gần nhất)
@@ -237,7 +237,15 @@ public class ChatService {
             "doanh thu", "revenue", "bệnh nhân nào", "which patient",
             "bác sĩ nào", "which doctor", "thuốc nào", "which medicine",
             "lịch hẹn", "appointment", "hồ sơ", "medical record",
-            "sản phẩm", "product", "kính", "glasses", "eyewear"
+            "sản phẩm", "product", "kính", "glasses", "eyewear",
+            // Thêm keywords cho medical records
+            "kết quả", "result", "khám bệnh", "examination", "chẩn đoán", "diagnosis",
+            "đơn thuốc", "prescription", "lịch sử", "history", "điều trị", "treatment",
+            "bệnh án", "medical", "tình trạng", "condition", "sức khỏe", "health",
+            "gần nhất", "recent", "mới nhất", "latest", "của tôi", "my",
+            // Thêm keywords cho orders
+            "đơn hàng", "order", "mua hàng", "purchase", "giao hàng", "delivery",
+            "thanh toán", "payment", "hoá đơn", "invoice", "mua", "buy"
         };
         
         for (String keyword : dataKeywords) {
@@ -252,11 +260,11 @@ public class ChatService {
     /**
      * Xử lý câu hỏi về dữ liệu bằng AI Query Service
      */
-    private String handleDataQuery(String message) {
+    private String handleDataQuery(String message, Integer userId) {
         try {
             logger.info("Processing data query: {}", message);
             
-            Map<String, Object> queryResult = aiQueryService.processQuery(message);
+            Map<String, Object> queryResult = aiQueryService.processQuery(message, userId);
             
             if ((Boolean) queryResult.get("success")) {
                 String aiResponse = (String) queryResult.get("response");

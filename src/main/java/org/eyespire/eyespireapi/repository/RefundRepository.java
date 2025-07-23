@@ -58,7 +58,7 @@ public interface RefundRepository extends JpaRepository<Refund, Integer> {
     /**
      * Thống kê hoàn tiền theo phương thức
      */
-    @Query("SELECT r.refundMethod, COUNT(r) FROM Refund r WHERE r.refundStatus = 'COMPLETED' AND r.createdAt BETWEEN :startDate AND :endDate GROUP BY r.refundMethod")
+    @Query("SELECT r.refundMethod, COUNT(r) FROM Refund r WHERE r.refundStatus = org.eyespire.eyespireapi.model.enums.RefundStatus.COMPLETED AND r.createdAt BETWEEN :startDate AND :endDate GROUP BY r.refundMethod")
     List<Object[]> countRefundsByMethodAndDateRange(@Param("startDate") LocalDateTime startDate, 
                                                    @Param("endDate") LocalDateTime endDate);
 }

@@ -2,6 +2,7 @@ package org.eyespire.eyespireapi.repository;
 
 import org.eyespire.eyespireapi.model.ChatboxSession;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -36,8 +37,10 @@ public interface ChatboxSessionRepository extends JpaRepository<ChatboxSession, 
     /**
      * Xóa session cũ (giữ lại N session gần nhất)
      */
-    @Query(value = "DELETE FROM chatbox_sessions WHERE user_id = :userId AND id NOT IN " +
-           "(SELECT id FROM (SELECT id FROM chatbox_sessions WHERE user_id = :userId ORDER BY updated_at DESC LIMIT :keepCount) AS temp)", 
+    @Modifying
+    @Query(value = "DELETE FROM chatbox_sessions WHERE user_id = :userId AND updated_at < " +
+           "(SELECT MIN(updated_at) FROM (SELECT TOP (:keepCount) updated_at FROM chatbox_sessions " +
+           "WHERE user_id = :userId ORDER BY updated_at DESC) AS recent_sessions)", 
            nativeQuery = true)
     void deleteOldSessions(@Param("userId") Integer userId, @Param("keepCount") int keepCount);
 }
