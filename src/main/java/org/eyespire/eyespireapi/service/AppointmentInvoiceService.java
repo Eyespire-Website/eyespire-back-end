@@ -1,13 +1,17 @@
 package org.eyespire.eyespireapi.service;
 
+import org.eyespire.eyespireapi.dto.InvoiceCreationRequestDTO;
 import org.eyespire.eyespireapi.model.Appointment;
 import org.eyespire.eyespireapi.model.AppointmentInvoice;
+import org.eyespire.eyespireapi.model.MedicalService;
 import org.eyespire.eyespireapi.model.Payment;
 import org.eyespire.eyespireapi.model.enums.AppointmentStatus;
 import org.eyespire.eyespireapi.model.enums.PaymentStatus;
 import org.eyespire.eyespireapi.model.enums.PaymentType;
+import org.eyespire.eyespireapi.model.enums.PrescriptionStatus;
 import org.eyespire.eyespireapi.repository.AppointmentInvoiceRepository;
 import org.eyespire.eyespireapi.repository.AppointmentRepository;
+import org.eyespire.eyespireapi.repository.MedicalServiceRepository;
 import org.eyespire.eyespireapi.repository.PaymentRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -30,6 +34,8 @@ public class AppointmentInvoiceService {
     @Autowired
     private PaymentRepository paymentRepository;
 
+    @Autowired
+    private MedicalServiceRepository medicalServiceRepository;
     /**
      * Tạo hóa đơn mới cho cuộc hẹn
      */
@@ -37,15 +43,51 @@ public class AppointmentInvoiceService {
     public AppointmentInvoice createInvoice(Appointment appointment, BigDecimal depositAmount) {
         AppointmentInvoice invoice = new AppointmentInvoice();
         invoice.setAppointment(appointment);
-        invoice.setTotalAmount(depositAmount); // Ban đầu, tổng chi phí chỉ là tiền cọc
+        invoice.setTotalAmount(depositAmount);
         invoice.setDepositAmount(depositAmount);
-        invoice.setRemainingAmount(BigDecimal.ZERO); // Ban đầu, số tiền còn lại là 0
-        invoice.setIsFullyPaid(true); // Ban đầu, đã thanh toán đầy đủ (chỉ có tiền cọc)
+        invoice.setRemainingAmount(BigDecimal.ZERO);
+        invoice.setIsFullyPaid(true);
         invoice.setCreatedAt(LocalDateTime.now());
-        
+        invoice.setPrescriptionStatus(PrescriptionStatus.NOT_BUY); // NEW: Default PrescriptionStatus
+
         return appointmentInvoiceRepository.save(invoice);
     }
-    
+
+    @Transactional
+    public AppointmentInvoice createInvoice(Integer appointmentId, List<Integer> serviceIds, List<InvoiceCreationRequestDTO.MedicationDTO> medications) {
+        Optional<Appointment> appointmentOpt = appointmentRepository.findById(appointmentId);
+        if (!appointmentOpt.isPresent()) {
+            throw new IllegalArgumentException("Không tìm thấy lịch hẹn với ID: " + appointmentId);
+        }
+
+        Appointment appointment = appointmentOpt.get();
+        AppointmentInvoice invoice = new AppointmentInvoice();
+        invoice.setAppointment(appointment);
+        invoice.setPrescriptionStatus(PrescriptionStatus.NOT_BUY);
+        invoice.setCreatedAt(LocalDateTime.now());
+
+        BigDecimal totalAmount = BigDecimal.ZERO;
+        if (serviceIds != null && !serviceIds.isEmpty()) {
+            List<MedicalService> services = medicalServiceRepository.findAllById(serviceIds);
+            totalAmount = services.stream()
+                    .map(MedicalService::getPrice)
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+        }
+
+        if (medications != null && !medications.isEmpty()) {
+            BigDecimal medicationTotal = medications.stream()
+                    .map(med -> med.getPrice().multiply(new BigDecimal(med.getQuantity())))
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+            totalAmount = totalAmount.add(medicationTotal);
+        }
+
+        invoice.setTotalAmount(totalAmount);
+        invoice.setRemainingAmount(totalAmount);
+        invoice.setDepositAmount(BigDecimal.ZERO);
+        invoice.setIsFullyPaid(false);
+        return appointmentInvoiceRepository.save(invoice);
+    }
+
     /**
      * Cập nhật hóa đơn sau khi bác sĩ tạo hồ sơ bệnh án
      */
@@ -131,6 +173,30 @@ public class AppointmentInvoiceService {
      */
     public List<AppointmentInvoice> getUnpaidInvoices() {
         return appointmentInvoiceRepository.findByIsFullyPaidFalse();
+    }
+
+    @Transactional
+    public Optional<AppointmentInvoice> updatePrescriptionStatus(Integer appointmentId, PrescriptionStatus status) {
+        Optional<AppointmentInvoice> invoiceOpt = appointmentInvoiceRepository.findByAppointmentId(appointmentId);
+        if (!invoiceOpt.isPresent()) {
+            return Optional.empty();
+        }
+
+        AppointmentInvoice invoice = invoiceOpt.get();
+        invoice.setPrescriptionStatus(status);
+
+        if (status == PrescriptionStatus.NOT_BUY) {
+            List<MedicalService> services = invoice.getAppointment().getServices();
+            BigDecimal serviceTotal = services.stream()
+                    .map(MedicalService::getPrice)
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+            invoice.setTotalAmount(serviceTotal);
+            invoice.setRemainingAmount(serviceTotal.subtract(invoice.getDepositAmount() != null ? invoice.getDepositAmount() : BigDecimal.ZERO));
+        } else if (status == PrescriptionStatus.PENDING) {
+            // Medication costs should already be included in totalAmount from invoice creation
+        }
+
+        return Optional.of(appointmentInvoiceRepository.save(invoice));
     }
     
     /**

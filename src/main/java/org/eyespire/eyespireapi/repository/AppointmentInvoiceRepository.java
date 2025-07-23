@@ -10,7 +10,7 @@ import java.util.List;
 import java.util.Optional;
 
 @Repository
-public interface AppointmentInvoiceRepository extends JpaRepository<AppointmentInvoice, Integer> {
+public interface AppointmentInvoiceRepository extends JpaRepository<AppointmentInvoice, Integer>, AppointmentInvoiceRepositoryCustom {
     
     // Tìm hóa đơn theo ID cuộc hẹn
     Optional<AppointmentInvoice> findByAppointmentId(Integer appointmentId);
