@@ -3,6 +3,7 @@ package org.eyespire.eyespireapi.controller;
 import org.eyespire.eyespireapi.dto.*;
 import org.eyespire.eyespireapi.model.*;
 import org.eyespire.eyespireapi.model.enums.AppointmentStatus;
+import org.eyespire.eyespireapi.model.enums.PrescriptionStatus;
 import org.eyespire.eyespireapi.service.AppointmentInvoiceService;
 import org.eyespire.eyespireapi.service.AppointmentService;
 import org.eyespire.eyespireapi.service.UserService;
@@ -285,6 +286,88 @@ public class AppointmentController {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Lỗi khi lấy thông tin hóa đơn của cuộc hẹn: " + e.getMessage());
         }
     }
+
+    // NEW: Create invoice for an appointment
+    @PostMapping("/{id}/invoice")
+    @PreAuthorize("hasRole('DOCTOR')")
+    public ResponseEntity<?> createAppointmentInvoice(@PathVariable Integer id, @RequestBody InvoiceCreationRequestDTO request) {
+        try {
+            AppointmentInvoice invoice = appointmentInvoiceService.createInvoice(id, request.getServiceIds(), request.getMedications());
+            return ResponseEntity.ok(invoice);
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Không thể tạo hóa đơn: " + e.getMessage());
+        }
+    }
+
+    // NEW: Update prescription status
+    @PutMapping("/{id}/invoice/prescription-status")
+    @PreAuthorize("hasRole('RECEPTIONIST')")
+    public ResponseEntity<?> updatePrescriptionStatus(@PathVariable Integer id, @RequestBody Map<String, String> request) {
+        try {
+            String statusStr = request.get("prescriptionStatus");
+            if (statusStr == null) {
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Thiếu thông tin trạng thái đơn thuốc");
+            }
+
+            PrescriptionStatus status;
+            try {
+                status = PrescriptionStatus.valueOf(statusStr.toUpperCase());
+            } catch (IllegalArgumentException e) {
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Trạng thái đơn thuốc không hợp lệ");
+            }
+
+            Optional<AppointmentInvoice> updatedInvoice = appointmentInvoiceService.updatePrescriptionStatus(id, status);
+            return updatedInvoice.map(ResponseEntity::ok)
+                    .orElseGet(() -> ResponseEntity.notFound().build());
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Lỗi khi cập nhật trạng thái đơn thuốc: " + e.getMessage());
+        }
+    }
+
+    @PostMapping("/{id}/create-invoice")
+    @PreAuthorize("hasRole('DOCTOR')")
+    public ResponseEntity<?> createInvoiceAndSetWaitingPayment(
+            @PathVariable Integer id,
+            @RequestBody InvoiceCreationRequestDTO request) {
+        try {
+            // Kiểm tra xem cuộc hẹn có tồn tại không
+            Optional<Appointment> appointmentOpt = appointmentService.getAppointmentById(id);
+            if (!appointmentOpt.isPresent()) {
+                return ResponseEntity.status(HttpStatus.NOT_FOUND).body("Không tìm thấy lịch hẹn");
+            }
+
+            Appointment appointment = appointmentOpt.get();
+            // CHANGED: Validate appointment status
+            if (appointment.getStatus() != AppointmentStatus.DOCTOR_FINISHED) {
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Cuộc hẹn phải ở trạng thái DOCTOR_FINISHED để tạo hóa đơn");
+            }
+            // END CHANGE
+
+            // Tạo hóa đơn với thông tin dịch vụ và thuốc (nếu có)
+            AppointmentInvoice invoice = appointmentInvoiceService.createInvoice(
+                    id,
+                    request.getServiceIds(),
+                    request.getIncludeMedications() ? request.getMedications() : null
+            );
+
+            // CHANGED: Explicitly set appointment status to WAITING_PAYMENT
+            appointment.setStatus(AppointmentStatus.WAITING_PAYMENT);
+            appointmentService.updateAppointmentStatus(id, AppointmentStatus.WAITING_PAYMENT);
+            // END CHANGE
+
+            // Cập nhật trạng thái đơn thuốc
+            if (request.getIncludeMedications() && request.getMedications() != null && !request.getMedications().isEmpty()) {
+                appointmentInvoiceService.updatePrescriptionStatus(id, PrescriptionStatus.PENDING);
+            } else {
+                appointmentInvoiceService.updatePrescriptionStatus(id, PrescriptionStatus.NOT_BUY);
+            }
+
+            return ResponseEntity.ok(convertToDTO(appointment));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Lỗi khi tạo hóa đơn và chuyển trạng thái: " + e.getMessage());
+        }
+    }
+
 
     private AppointmentDTO convertToDTO(Appointment appointment) {
         AppointmentDTO dto = new AppointmentDTO();

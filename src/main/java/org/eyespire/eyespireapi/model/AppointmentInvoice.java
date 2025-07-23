@@ -4,6 +4,7 @@ import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import org.eyespire.eyespireapi.model.enums.PrescriptionStatus;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -34,7 +35,11 @@ public class AppointmentInvoice {
     
     @Column(name = "transaction_id", length = 255)
     private String transactionId;
-    
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "prescription_status")
+    private PrescriptionStatus prescriptionStatus = PrescriptionStatus.NOT_BUY;
+
     @Column(name = "paid_at")
     private LocalDateTime paidAt;
     
