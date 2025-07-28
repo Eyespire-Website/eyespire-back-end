@@ -10,5 +10,5 @@ public enum AppointmentStatus {
     WAITING_PAYMENT,  // Tạo hóa đơn sau khi bác sĩ khám xong
     COMPLETED,        // Đã hoàn thành (đã thanh toán)
     CANCELED,         // Đã hủy
-    NO_SHOW           // Không đến
+    NO_SHOW           // Không đến  
 }

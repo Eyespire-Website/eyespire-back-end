@@ -12,7 +12,7 @@ import java.util.Optional;
 @Repository
 public interface PaymentRepository extends JpaRepository<Payment, Integer> {
     Optional<Payment> findByTransactionNo(String transactionNo);
-    
+
     /**
      * Tìm tất cả các thanh toán của một người dùng
      * @param userId ID của người dùng

@@ -324,6 +324,48 @@ public class AppointmentController {
         }
     }
 
+    @PutMapping("/{id}/update-invoice")
+    @PreAuthorize("hasRole('DOCTOR')")
+    public ResponseEntity<?> updateInvoiceAndSetWaitingPayment(
+            @PathVariable Integer id,
+            @RequestBody InvoiceCreationRequestDTO request) {
+        try {
+            // Kiểm tra sự tồn tại của lịch hẹn
+            Optional<Appointment> appointmentOpt = appointmentService.getAppointmentById(id);
+            if (!appointmentOpt.isPresent()) {
+                return ResponseEntity.status(HttpStatus.NOT_FOUND).body("Không tìm thấy lịch hẹn");
+            }
+
+            // Kiểm tra trạng thái lịch hẹn
+            Appointment appointment = appointmentOpt.get();
+            if (appointment.getStatus() != AppointmentStatus.DOCTOR_FINISHED) {
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                        .body("Lịch hẹn phải ở trạng thái DOCTOR_FINISHED để cập nhật hóa đơn");
+            }
+
+            // Gọi service để tạo hoặc cập nhật hóa đơn
+            AppointmentInvoice invoice = appointmentInvoiceService.updateOrCreateInvoice(
+                    id,
+                    request.getServiceIds(),
+                    request.getIncludeMedications() ? request.getMedications() : null
+            );
+
+            // Cập nhật trạng thái lịch hẹn sang WAITING_PAYMENT
+            Optional<Appointment> updatedAppointment = appointmentService.updateAppointmentStatus(id, AppointmentStatus.WAITING_PAYMENT);
+            if (!updatedAppointment.isPresent()) {
+                return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                        .body("Lỗi khi cập nhật trạng thái lịch hẹn sang WAITING_PAYMENT");
+            }
+
+            return ResponseEntity.ok(invoice);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Lỗi: " + e.getMessage());
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("Lỗi khi tạo hoặc cập nhật hóa đơn: " + e.getMessage());
+        }
+    }
+
     @PostMapping("/{id}/create-invoice")
     @PreAuthorize("hasRole('DOCTOR')")
     public ResponseEntity<?> createInvoiceAndSetWaitingPayment(

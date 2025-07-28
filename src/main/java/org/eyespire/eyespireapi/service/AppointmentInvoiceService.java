@@ -54,6 +54,55 @@ public class AppointmentInvoiceService {
     }
 
     @Transactional
+    public AppointmentInvoice updateOrCreateInvoice(Integer appointmentId, List<Integer> serviceIds, List<InvoiceCreationRequestDTO.MedicationDTO> medications) {
+        Optional<Appointment> appointmentOpt = appointmentRepository.findById(appointmentId);
+        if (!appointmentOpt.isPresent()) {
+            throw new IllegalArgumentException("Không tìm thấy lịch hẹn với ID: " + appointmentId);
+        }
+
+        Appointment appointment = appointmentOpt.get();
+        Optional<AppointmentInvoice> invoiceOpt = appointmentInvoiceRepository.findByAppointmentId(appointmentId);
+        AppointmentInvoice invoice = invoiceOpt.orElseGet(() -> {
+            AppointmentInvoice newInvoice = new AppointmentInvoice();
+            newInvoice.setAppointment(appointment);
+            newInvoice.setCreatedAt(LocalDateTime.now());
+            newInvoice.setDepositAmount(BigDecimal.ZERO);
+            newInvoice.setIsFullyPaid(false);
+            return newInvoice;
+        });
+
+        // Cập nhật danh sách dịch vụ
+        BigDecimal totalAmount = BigDecimal.ZERO;
+        if (serviceIds != null && !serviceIds.isEmpty()) {
+            List<MedicalService> services = medicalServiceRepository.findAllById(serviceIds);
+            if (services.size() != serviceIds.size()) {
+                throw new IllegalArgumentException("Một hoặc nhiều ID dịch vụ không hợp lệ");
+            }
+            totalAmount = services.stream()
+                    .map(MedicalService::getPrice)
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+        } else {
+
+        }
+
+        // Xử lý đơn thuốc
+        if (medications != null && !medications.isEmpty()) {
+            BigDecimal medicationTotal = medications.stream()
+                    .map(med -> med.getPrice().multiply(new BigDecimal(med.getQuantity())))
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+            totalAmount = totalAmount.add(medicationTotal);
+            invoice.setPrescriptionStatus(PrescriptionStatus.PENDING);
+        } else {
+            invoice.setPrescriptionStatus(PrescriptionStatus.NOT_BUY);
+        }
+
+        // Cập nhật tổng chi phí và số tiền còn lại
+        invoice.setTotalAmount(totalAmount);
+        invoice.setRemainingAmount(totalAmount.subtract(invoice.getDepositAmount() != null ? invoice.getDepositAmount() : BigDecimal.ZERO));
+        return appointmentInvoiceRepository.save(invoice);
+    }
+
+    @Transactional
     public AppointmentInvoice createInvoice(Integer appointmentId, List<Integer> serviceIds, List<InvoiceCreationRequestDTO.MedicationDTO> medications) {
         Optional<Appointment> appointmentOpt = appointmentRepository.findById(appointmentId);
         if (!appointmentOpt.isPresent()) {
