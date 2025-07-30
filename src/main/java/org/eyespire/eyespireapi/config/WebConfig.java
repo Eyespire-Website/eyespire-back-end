@@ -11,7 +11,7 @@ import java.nio.file.Paths;
 @Configuration
 public class WebConfig implements WebMvcConfigurer {
 
-    @Value("${app.upload.dir:${user.home}/eyespire/uploads}")
+    @Value("${app.upload.dir}")
     private String uploadDir;
 
     @Override
