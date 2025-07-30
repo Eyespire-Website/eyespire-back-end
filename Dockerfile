@@ -19,4 +19,8 @@ COPY --from=build /app/target/eyespire-api-*.war app.war
 EXPOSE 8080
 
 # Command to run the application
+
 ENTRYPOINT ["java", "-jar", "app.war"]
+
+
+
