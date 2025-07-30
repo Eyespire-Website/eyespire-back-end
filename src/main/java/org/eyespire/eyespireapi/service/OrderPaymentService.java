@@ -119,8 +119,8 @@ public class OrderPaymentService {
             appointmentDTO.setTimeSlot("08:00");
 
             // Định nghĩa URL trả về và URL hủy
-            String returnUrl = customReturnUrl != null ? customReturnUrl : "http://localhost:3000/payment/order-return";
-            String cancelUrl = "http://localhost:3000/payment/order-cancel";
+            String returnUrl = customReturnUrl != null ? customReturnUrl : "https://eyespire.vercel.app/payment/order-return";
+            String cancelUrl = "https://eyespire.vercel.app/payment/order-cancel";
 
             // Tạo yêu cầu thanh toán
             OrderPayOSCreateRequest paymentRequest = OrderPayOSCreateRequest.builder()

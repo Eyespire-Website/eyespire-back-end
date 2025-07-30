@@ -11,7 +11,7 @@ import java.util.Map;
 
 @RestController
 @RequestMapping("/api/auth")
-@CrossOrigin(origins = {"http://localhost:3000", "http://localhost:3001"}, allowedHeaders = "*", methods = {RequestMethod.GET, RequestMethod.POST})
+@CrossOrigin(origins = {"https://eyespire.vercel.app", "https://eyespire.vercel.app"}, allowedHeaders = "*", methods = {RequestMethod.GET, RequestMethod.POST})
 public class AuthController {
 
     @Autowired

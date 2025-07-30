@@ -13,7 +13,7 @@ import java.util.Map;
 
 @RestController
 @RequestMapping("/api/payment-history")
-@CrossOrigin(origins = "http://localhost:3000")
+@CrossOrigin(origins = "https://eyespire.vercel.app")
 public class PaymentHistoryController {
 
     @Autowired
