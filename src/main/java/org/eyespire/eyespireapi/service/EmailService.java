@@ -60,7 +60,7 @@ public class EmailService {
                 "Chào mừng bạn đến với hệ thống Eyespire. Dưới đây là thông tin đăng nhập của bạn:\n\n" +
                 "Tên đăng nhập: " + username + "\n" +
                 "Mật khẩu: " + password + "\n\n" +
-                "Vui lòng đăng nhập tại: http://localhost:3000/login\n\n" +
+                "Vui lòng đăng nhập tại: https://eyespire.vercel.app/login\n\n" +
                 "Lưu ý: Vì lý do bảo mật, bạn nên đổi mật khẩu ngay sau lần đăng nhập đầu tiên.\n\n" +
                 "Trân trọng,\n" +
                 "Đội ngũ Eyespire");

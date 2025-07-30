@@ -17,7 +17,7 @@ import java.util.Map;
 
 @RestController
 @RequestMapping("/api/orders")
-@CrossOrigin(origins = "http://localhost:3000")
+@CrossOrigin(origins = "https://eyespire.vercel.app")
 public class OrderController {
 
     private static final Logger log = LoggerFactory.getLogger(OrderService.class);

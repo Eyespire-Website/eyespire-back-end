@@ -316,7 +316,7 @@ public class UserService {
             userRepository.save(user);
             
             // Trả về đường dẫn đầy đủ của avatar
-            return "http://localhost:8080" + avatarUrl;
+            return "https://eyespire-back-end.onrender.com" + avatarUrl;
         } else {
             throw new RuntimeException("Không tìm thấy người dùng");
         }
