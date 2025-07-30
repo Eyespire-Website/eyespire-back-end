@@ -1,17 +1,22 @@
-
-FROM eclipse-temurin:21-jdk AS build
+# Build stage
+FROM maven:3.9.6-eclipse-temurin-21 AS build
 WORKDIR /app
-
 COPY . .
 RUN mvn clean package -DskipTests
 
-
-# Run stage
-
+# Runtime stage
 FROM eclipse-temurin:21-jre
 WORKDIR /app
 
-COPY --from=build /app/target/eyespire-api-0.0.1-SNAPSHOT.war eyespire-api.war
+# Create directory for uploads
+RUN mkdir -p /app/uploads
+VOLUME /app/uploads
+
+# Copy the WAR file from build stage
+COPY --from=build /app/target/eyespire-api-*.war app.war
+
+# Expose port 8080
 EXPOSE 8080
 
-ENTRYPOINT ["java","-jar","eyespire-api.war"]
+# Command to run the application
+ENTRYPOINT ["java", "-jar", "app.war"]
