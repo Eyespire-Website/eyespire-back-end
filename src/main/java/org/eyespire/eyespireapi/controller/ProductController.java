@@ -80,7 +80,7 @@ public class ProductController {
         
         try {
             // Lưu file vào thư mục gốc (không sử dụng thư mục con)
-            String imageUrl = fileStorageService.storeImage(image, "");
+            String imageUrl = fileStorageService.storeImage(image, "products");
             
             // Trả về URL của ảnh
             Map<String, String> response = new HashMap<>();

@@ -1,5 +1,10 @@
 package org.eyespire.eyespireapi.service;
 
+import com.azure.storage.blob.BlobClient;
+import com.azure.storage.blob.BlobContainerClient;
+import com.azure.storage.blob.BlobServiceClient;
+import com.azure.storage.blob.BlobServiceClientBuilder;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
@@ -15,6 +20,18 @@ import java.util.UUID;
 public class FileStorageService {
 
     private final Path fileStorageLocation;
+    
+    @Value("${app.storage.type:local}")
+    private String storageType;
+    
+    @Value("${azure.storage.connection-string:}")
+    private String azureConnectionString;
+    
+    @Value("${azure.storage.container-name:eyespire-images}")
+    private String containerName;
+    
+    @Autowired
+    private AzureBlobStorageService azureBlobStorageService;
 
     public FileStorageService(@Value("${app.upload.dir:${user.home}/eyespire/uploads}") String uploadDir) {
         this.fileStorageLocation = Paths.get(uploadDir).toAbsolutePath().normalize();
@@ -26,84 +43,101 @@ public class FileStorageService {
     }
 
     /**
-     * Lưu trữ nhiều file và trả về chuỗi các URL tương đối, phân tách bằng dấu chấm phẩy
+     * Lưu trữ nhiều file và trả về chuỗi các URL, phân tách bằng dấu chấm phẩy
      * @param files Mảng các file cần lưu trữ
-     * @return Chuỗi các URL tương đối, phân tách bằng dấu chấm phẩy
+     * @return Chuỗi các URL, phân tách bằng dấu chấm phẩy
      */
     public String storeFiles(MultipartFile[] files) {
         if (files == null || files.length == 0) {
             return "";
         }
-        try {
-            StringBuilder fileUrls = new StringBuilder();
-            for (MultipartFile file : files) {
-                if (!file.isEmpty()) {
-                    String fileName = UUID.randomUUID() + "_" + file.getOriginalFilename();
-                    Path targetLocation = fileStorageLocation.resolve(fileName);
-                    Files.copy(file.getInputStream(), targetLocation, StandardCopyOption.REPLACE_EXISTING);
-                    fileUrls.append("/uploads/").append(fileName).append(";");
+        
+        if ("azure".equalsIgnoreCase(storageType)) {
+            return azureBlobStorageService.storeFiles(files);
+        } else {
+            // Local storage implementation
+            try {
+                StringBuilder fileUrls = new StringBuilder();
+                for (MultipartFile file : files) {
+                    if (!file.isEmpty()) {
+                        String fileName = UUID.randomUUID() + "_" + file.getOriginalFilename();
+                        Path targetLocation = fileStorageLocation.resolve(fileName);
+                        Files.copy(file.getInputStream(), targetLocation, StandardCopyOption.REPLACE_EXISTING);
+                        fileUrls.append("/uploads/").append(fileName).append(";");
+                    }
                 }
+                // Xóa dấu chấm phẩy cuối nếu có
+                if (fileUrls.length() > 0) {
+                    fileUrls.deleteCharAt(fileUrls.length() - 1);
+                }
+                return fileUrls.toString();
+            } catch (IOException ex) {
+                throw new RuntimeException("Could not store files", ex);
             }
-            // Xóa dấu chấm phẩy cuối nếu có
-            if (fileUrls.length() > 0) {
-                fileUrls.deleteCharAt(fileUrls.length() - 1);
-            }
-            return fileUrls.toString();
-        } catch (IOException ex) {
-            throw new RuntimeException("Could not store files", ex);
         }
     }
 
     /**
-     * Lưu trữ một file ảnh duy nhất và trả về URL tương đối
+     * Lưu trữ một file ảnh duy nhất và trả về URL
      * @param file File ảnh cần lưu trữ
-     * @param subDirectory Thư mục con để lưu trữ (không còn sử dụng)
-     * @return URL tương đối của file đã lưu
+     * @param subDirectory Thư mục con để lưu trữ
+     * @return URL của file đã lưu
      */
     public String storeImage(MultipartFile file, String subDirectory) {
-        try {
-            if (file.isEmpty()) {
-                throw new RuntimeException("Failed to store empty file");
+        if ("azure".equalsIgnoreCase(storageType)) {
+            return azureBlobStorageService.storeImage(file, subDirectory);
+        } else {
+            // Local storage implementation
+            try {
+                if (file.isEmpty()) {
+                    throw new RuntimeException("Failed to store empty file");
+                }
+
+                String originalFilename = file.getOriginalFilename();
+                String extension = "";
+                if (originalFilename != null && originalFilename.contains(".")) {
+                    extension = originalFilename.substring(originalFilename.lastIndexOf("."));
+                }
+                String fileName = UUID.randomUUID().toString() + extension;
+
+                Path targetLocation = fileStorageLocation.resolve(fileName);
+                Files.copy(file.getInputStream(), targetLocation, StandardCopyOption.REPLACE_EXISTING);
+
+                return "/uploads/" + fileName;
+            } catch (IOException ex) {
+                throw new RuntimeException("Could not store file " + file.getOriginalFilename(), ex);
             }
-
-            String originalFilename = file.getOriginalFilename();
-            String extension = "";
-            if (originalFilename != null && originalFilename.contains(".")) {
-                extension = originalFilename.substring(originalFilename.lastIndexOf("."));
-            }
-            String fileName = UUID.randomUUID().toString() + extension;
-
-            Path targetLocation = fileStorageLocation.resolve(fileName);
-            Files.copy(file.getInputStream(), targetLocation, StandardCopyOption.REPLACE_EXISTING);
-
-            return "/uploads/" + fileName;
-        } catch (IOException ex) {
-            throw new RuntimeException("Could not store file " + file.getOriginalFilename(), ex);
         }
     }
 
     /**
-     * Xóa file dựa trên URL tương đối
-     * @param fileUrl URL tương đối của file cần xóa (ví dụ: /uploads/filename)
+     * Xóa file dựa trên URL
+     * @param fileUrl URL của file cần xóa
      */
     public void deleteFile(String fileUrl) {
         if (fileUrl == null || fileUrl.isEmpty()) {
             return;
         }
-        try {
-            // Loại bỏ tiền tố "/uploads/" để lấy tên file
-            String fileName = fileUrl.startsWith("/uploads/") ? fileUrl.substring("/uploads/".length()) : fileUrl;
-            Path filePath = fileStorageLocation.resolve(fileName).normalize();
-            // Đảm bảo file nằm trong thư mục lưu trữ để tránh xóa file ngoài ý muốn
-            if (filePath.startsWith(fileStorageLocation)) {
-                Files.deleteIfExists(filePath);
-            } else {
-                throw new SecurityException("Attempt to delete file outside of storage directory: " + filePath);
+        
+        if ("azure".equalsIgnoreCase(storageType)) {
+            azureBlobStorageService.deleteFile(fileUrl);
+        } else {
+            // Local storage implementation
+            try {
+                // Loại bỏ tiền tố "/uploads/" để lấy tên file
+                String fileName = fileUrl.startsWith("/uploads/") ? fileUrl.substring("/uploads/".length()) : fileUrl;
+                Path filePath = fileStorageLocation.resolve(fileName).normalize();
+                // Đảm bảo file nằm trong thư mục lưu trữ để tránh xóa file ngoài ý muốn
+                if (filePath.startsWith(fileStorageLocation)) {
+                    Files.deleteIfExists(filePath);
+                } else {
+                    throw new SecurityException("Attempt to delete file outside of storage directory: " + filePath);
+                }
+            } catch (IOException ex) {
+                throw new RuntimeException("Could not delete file: " + fileUrl, ex);
+            } catch (SecurityException ex) {
+                throw new RuntimeException("Security violation while deleting file: " + fileUrl, ex);
             }
-        } catch (IOException ex) {
-            throw new RuntimeException("Could not delete file: " + fileUrl, ex);
-        } catch (SecurityException ex) {
-            throw new RuntimeException("Security violation while deleting file: " + fileUrl, ex);
         }
     }
 
@@ -113,5 +147,13 @@ public class FileStorageService {
      */
     public Path getFileStorageLocation() {
         return fileStorageLocation;
+    }
+    
+    /**
+     * Lấy loại storage đang sử dụng
+     * @return Loại storage (local hoặc azure)
+     */
+    public String getStorageType() {
+        return storageType;
     }
 }
