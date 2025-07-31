@@ -53,28 +53,14 @@ public class FileStorageService {
             return "";
         }
         
-        if ("azure".equalsIgnoreCase(storageType)) {
+        if (azureBlobStorageService == null) {
+            throw new RuntimeException("AzureBlobStorageService is not initialized");
+        }
+        
+        try {
             return azureBlobStorageService.storeFiles(files);
-        } else {
-            // Local storage implementation
-            try {
-                StringBuilder fileUrls = new StringBuilder();
-                for (MultipartFile file : files) {
-                    if (!file.isEmpty()) {
-                        String fileName = UUID.randomUUID() + "_" + file.getOriginalFilename();
-                        Path targetLocation = fileStorageLocation.resolve(fileName);
-                        Files.copy(file.getInputStream(), targetLocation, StandardCopyOption.REPLACE_EXISTING);
-                        fileUrls.append("/uploads/").append(fileName).append(";");
-                    }
-                }
-                // Xóa dấu chấm phẩy cuối nếu có
-                if (fileUrls.length() > 0) {
-                    fileUrls.deleteCharAt(fileUrls.length() - 1);
-                }
-                return fileUrls.toString();
-            } catch (IOException ex) {
-                throw new RuntimeException("Could not store files", ex);
-            }
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to upload files to Azure Blob Storage: " + e.getMessage(), e);
         }
     }
 
@@ -85,42 +71,22 @@ public class FileStorageService {
      * @return URL của file đã lưu
      */
     public String storeImage(MultipartFile file, String subDirectory) {
-        System.out.println("[FileStorageService] storeImage called with storageType: " + storageType);
+        System.out.println("[FileStorageService] storeImage called - using Azure Blob Storage only");
         System.out.println("[FileStorageService] azureBlobStorageService is null: " + (azureBlobStorageService == null));
-        if ("azure".equalsIgnoreCase(storageType)) {
-            System.out.println("[FileStorageService] Using Azure Blob Storage");
-            if (azureBlobStorageService == null) {
-                System.out.println("[FileStorageService] ERROR: azureBlobStorageService is null, falling back to local storage");
-            } else {
-                try {
-                    return azureBlobStorageService.storeImage(file, subDirectory);
-                } catch (Exception e) {
-                    System.out.println("[FileStorageService] ERROR: Azure upload failed: " + e.getMessage());
-                    e.printStackTrace();
-                }
-            }
+        
+        if (azureBlobStorageService == null) {
+            throw new RuntimeException("AzureBlobStorageService is not initialized");
         }
-        System.out.println("[FileStorageService] Using Local Storage");
-            // Local storage implementation
-            try {
-                if (file.isEmpty()) {
-                    throw new RuntimeException("Failed to store empty file");
-                }
-
-                String originalFilename = file.getOriginalFilename();
-                String extension = "";
-                if (originalFilename != null && originalFilename.contains(".")) {
-                    extension = originalFilename.substring(originalFilename.lastIndexOf("."));
-                }
-                String fileName = UUID.randomUUID().toString() + extension;
-
-                Path targetLocation = fileStorageLocation.resolve(fileName);
-                Files.copy(file.getInputStream(), targetLocation, StandardCopyOption.REPLACE_EXISTING);
-
-                return "/uploads/" + fileName;
-            } catch (IOException ex) {
-                throw new RuntimeException("Could not store file " + file.getOriginalFilename(), ex);
-            }
+        
+        try {
+            System.out.println("[FileStorageService] Calling Azure Blob Storage service");
+            String result = azureBlobStorageService.storeImage(file, subDirectory);
+            System.out.println("[FileStorageService] Azure upload successful, URL: " + result);
+            return result;
+        } catch (Exception e) {
+            System.out.println("[FileStorageService] ERROR: Azure upload failed: " + e.getMessage());
+            e.printStackTrace();
+            throw new RuntimeException("Failed to upload to Azure Blob Storage: " + e.getMessage(), e);
         }
     }
 
@@ -133,25 +99,14 @@ public class FileStorageService {
             return;
         }
         
-        if ("azure".equalsIgnoreCase(storageType)) {
+        if (azureBlobStorageService == null) {
+            throw new RuntimeException("AzureBlobStorageService is not initialized");
+        }
+        
+        try {
             azureBlobStorageService.deleteFile(fileUrl);
-        } else {
-            // Local storage implementation
-            try {
-                // Loại bỏ tiền tố "/uploads/" để lấy tên file
-                String fileName = fileUrl.startsWith("/uploads/") ? fileUrl.substring("/uploads/".length()) : fileUrl;
-                Path filePath = fileStorageLocation.resolve(fileName).normalize();
-                // Đảm bảo file nằm trong thư mục lưu trữ để tránh xóa file ngoài ý muốn
-                if (filePath.startsWith(fileStorageLocation)) {
-                    Files.deleteIfExists(filePath);
-                } else {
-                    throw new SecurityException("Attempt to delete file outside of storage directory: " + filePath);
-                }
-            } catch (IOException ex) {
-                throw new RuntimeException("Could not delete file: " + fileUrl, ex);
-            } catch (SecurityException ex) {
-                throw new RuntimeException("Security violation while deleting file: " + fileUrl, ex);
-            }
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to delete file from Azure Blob Storage: " + e.getMessage(), e);
         }
     }
 

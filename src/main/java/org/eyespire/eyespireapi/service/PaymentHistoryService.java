@@ -336,7 +336,7 @@ public class PaymentHistoryService {
         }
         
         // Thông tin hóa đơn
-        dto.setAmount(appointmentInvoice.getTotalAmount().toString() + " đ");
+        dto.setAmount(appointmentInvoice.getRemainingAmount().toString() + " đ");
         dto.setStatus(appointmentInvoice.getIsFullyPaid() ? "paid" : "pending");
         dto.setType("service");
         dto.setTransactionNo(appointmentInvoice.getTransactionId());
