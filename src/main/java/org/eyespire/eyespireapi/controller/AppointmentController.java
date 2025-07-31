@@ -341,6 +341,7 @@ public class AppointmentController {
             Appointment appointment = appointmentOpt.get();
             if (appointment.getStatus() != AppointmentStatus.DOCTOR_FINISHED) {
                 return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                        .body("Lịch hẹn phải ở trạng thái DOCTOR_FINISHED để cập nhật hóa đơn");
             }
 
             // Gọi service để tạo hoặc cập nhật hóa đơn
