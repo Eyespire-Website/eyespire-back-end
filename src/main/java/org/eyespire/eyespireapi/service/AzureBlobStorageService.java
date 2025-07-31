@@ -7,6 +7,7 @@ import com.azure.storage.blob.BlobServiceClientBuilder;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
+import jakarta.annotation.PostConstruct;
 
 import java.io.IOException;
 import java.util.UUID;
@@ -19,6 +20,16 @@ public class AzureBlobStorageService {
 
     @Value("${azure.storage.container-name:eyespire-images}")
     private String containerName;
+    
+    public AzureBlobStorageService() {
+        System.out.println("[AzureBlobStorageService] Constructor called");
+    }
+    
+    @PostConstruct
+    public void init() {
+        System.out.println("[AzureBlobStorageService] PostConstruct - connectionString: " + (connectionString != null ? "SET" : "NULL"));
+        System.out.println("[AzureBlobStorageService] PostConstruct - containerName: " + containerName);
+    }
 
     // Account name từ connection string
     private static final String ACCOUNT_NAME = "eyespirestorage25";

@@ -86,11 +86,21 @@ public class FileStorageService {
      */
     public String storeImage(MultipartFile file, String subDirectory) {
         System.out.println("[FileStorageService] storeImage called with storageType: " + storageType);
+        System.out.println("[FileStorageService] azureBlobStorageService is null: " + (azureBlobStorageService == null));
         if ("azure".equalsIgnoreCase(storageType)) {
             System.out.println("[FileStorageService] Using Azure Blob Storage");
-            return azureBlobStorageService.storeImage(file, subDirectory);
-        } else {
-            System.out.println("[FileStorageService] Using Local Storage");
+            if (azureBlobStorageService == null) {
+                System.out.println("[FileStorageService] ERROR: azureBlobStorageService is null, falling back to local storage");
+            } else {
+                try {
+                    return azureBlobStorageService.storeImage(file, subDirectory);
+                } catch (Exception e) {
+                    System.out.println("[FileStorageService] ERROR: Azure upload failed: " + e.getMessage());
+                    e.printStackTrace();
+                }
+            }
+        }
+        System.out.println("[FileStorageService] Using Local Storage");
             // Local storage implementation
             try {
                 if (file.isEmpty()) {
