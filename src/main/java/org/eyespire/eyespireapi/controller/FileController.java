@@ -25,7 +25,16 @@ public class FileController {
     @GetMapping("/uploads/{filename:.+}")
     public ResponseEntity<Resource> serveFile(@PathVariable String filename) {
         try {
-            Path file = fileStorageService.getFileStorageLocation().resolve(filename).normalize();
+            // For Azure Blob Storage, redirect to the blob URL
+            if ("azure".equalsIgnoreCase(fileStorageService.getStorageType())) {
+                // For Azure, the URL is already complete, redirect to it
+                return ResponseEntity.status(302)
+                        .header("Location", "https://eyespirestorage25.blob.core.windows.net/eyespire-images/" + filename)
+                        .build();
+            }
+            
+            // For local storage, serve the file directly
+            Path file = Paths.get(System.getProperty("java.io.tmpdir"), "eyespire", "uploads", filename).normalize();
             Resource resource = new UrlResource(file.toUri());
             if (resource.exists() && resource.isReadable()) {
                 return ResponseEntity.ok()
