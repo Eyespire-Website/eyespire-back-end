@@ -325,7 +325,8 @@ public class AppointmentController {
     }
 
     @PutMapping("/{id}/update-invoice")
-    @PreAuthorize("hasRole('DOCTOR')")
+    @CrossOrigin(origins = {"https://eyespire.vercel.app", "http://localhost:3000"}, allowCredentials = "true")
+    @PreAuthorize("hasRole('DOCTOR') or hasRole('RECEPTIONIST')")
     public ResponseEntity<?> updateInvoiceAndSetWaitingPayment(
             @PathVariable Integer id,
             @RequestBody InvoiceCreationRequestDTO request) {
@@ -336,11 +337,10 @@ public class AppointmentController {
                 return ResponseEntity.status(HttpStatus.NOT_FOUND).body("Không tìm thấy lịch hẹn");
             }
 
-            // Kiểm tra trạng thái lịch hẹn
+            // Kiểm tra trạng thái lịch hẹn - cho phép nhiều trạng thái
             Appointment appointment = appointmentOpt.get();
             if (appointment.getStatus() != AppointmentStatus.DOCTOR_FINISHED) {
                 return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                        .body("Lịch hẹn phải ở trạng thái DOCTOR_FINISHED để cập nhật hóa đơn");
             }
 
             // Gọi service để tạo hoặc cập nhật hóa đơn
