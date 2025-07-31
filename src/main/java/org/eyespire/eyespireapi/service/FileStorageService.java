@@ -40,6 +40,7 @@ public class FileStorageService {
         } catch (Exception ex) {
             throw new RuntimeException("Could not create upload directory: " + fileStorageLocation, ex);
         }
+        System.out.println("[FileStorageService] Initialized with uploadDir: " + uploadDir);
     }
 
     /**
@@ -84,9 +85,12 @@ public class FileStorageService {
      * @return URL của file đã lưu
      */
     public String storeImage(MultipartFile file, String subDirectory) {
+        System.out.println("[FileStorageService] storeImage called with storageType: " + storageType);
         if ("azure".equalsIgnoreCase(storageType)) {
+            System.out.println("[FileStorageService] Using Azure Blob Storage");
             return azureBlobStorageService.storeImage(file, subDirectory);
         } else {
+            System.out.println("[FileStorageService] Using Local Storage");
             // Local storage implementation
             try {
                 if (file.isEmpty()) {

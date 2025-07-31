@@ -80,7 +80,10 @@ public class ProductController {
         
         try {
             // Lưu file vào thư mục gốc (không sử dụng thư mục con)
+            System.out.println("[ProductController] Uploading image: " + image.getOriginalFilename());
+            System.out.println("[ProductController] FileStorageService storage type: " + fileStorageService.getStorageType());
             String imageUrl = fileStorageService.storeImage(image, "products");
+            System.out.println("[ProductController] Image uploaded, URL: " + imageUrl);
             
             // Trả về URL của ảnh
             Map<String, String> response = new HashMap<>();
