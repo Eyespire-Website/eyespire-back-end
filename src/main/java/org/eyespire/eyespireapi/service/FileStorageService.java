@@ -101,26 +101,25 @@ public class FileStorageService {
             }
         }
         System.out.println("[FileStorageService] Using Local Storage");
-            // Local storage implementation
-            try {
-                if (file.isEmpty()) {
-                    throw new RuntimeException("Failed to store empty file");
-                }
-
-                String originalFilename = file.getOriginalFilename();
-                String extension = "";
-                if (originalFilename != null && originalFilename.contains(".")) {
-                    extension = originalFilename.substring(originalFilename.lastIndexOf("."));
-                }
-                String fileName = UUID.randomUUID().toString() + extension;
-
-                Path targetLocation = fileStorageLocation.resolve(fileName);
-                Files.copy(file.getInputStream(), targetLocation, StandardCopyOption.REPLACE_EXISTING);
-
-                return "/uploads/" + fileName;
-            } catch (IOException ex) {
-                throw new RuntimeException("Could not store file " + file.getOriginalFilename(), ex);
+        // Local storage implementation
+        try {
+            if (file.isEmpty()) {
+                throw new RuntimeException("Failed to store empty file");
             }
+
+            String originalFilename = file.getOriginalFilename();
+            String extension = "";
+            if (originalFilename != null && originalFilename.contains(".")) {
+                extension = originalFilename.substring(originalFilename.lastIndexOf("."));
+            }
+            String fileName = UUID.randomUUID().toString() + extension;
+
+            Path targetLocation = fileStorageLocation.resolve(fileName);
+            Files.copy(file.getInputStream(), targetLocation, StandardCopyOption.REPLACE_EXISTING);
+
+            return "/uploads/" + fileName;
+        } catch (IOException ex) {
+            throw new RuntimeException("Could not store file " + file.getOriginalFilename(), ex);
         }
     }
 
