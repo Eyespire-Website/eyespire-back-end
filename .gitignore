@@ -31,19 +31,3 @@ build/
 
 ### VS Code ###
 .vscode/
-
-### Security - Environment Variables ###
-# Exclude actual application.properties with sensitive data
-src/main/resources/application.properties
-# Include template file for reference
-!src/main/resources/application-template.properties
-
-### Local Environment Files ###
-.env
-.env.local
-.env.production
-.env.staging
-
-### Upload Directory ###
-uploads/
-/tmp/eyespire/
